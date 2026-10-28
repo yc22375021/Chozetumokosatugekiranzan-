@@ -1,10 +1,10 @@
 # CPU 格闘ゲーム（開発版）
 
-Windows 向けの小規模な 2D CPU 対戦ゲームです。C# / .NET 8 と MonoGame DesktopGL 3.8.6 を使用します。MonoGame の公式 NuGet パッケージは Windows 10 (22H2 以降) を含むデスクトップ環境を対象とし、SDL2/OpenGL の描画・入力を提供します。ライセンスと配布条件は [`THIRD-PARTY-NOTICES.txt`](THIRD-PARTY-NOTICES.txt) と各公式パッケージ情報を参照してください。
+Windows 向けの小規模な 2D CPU 対戦ゲームです。C# / [.NET 10 LTS](https://dotnet.microsoft.com/en-us/platform/support/policy) と [MonoGame DesktopGL 3.8.6](https://www.nuget.org/packages/MonoGame.Framework.DesktopGL/3.8.6) を使用します。MonoGame の公式 NuGet パッケージは .NET 8 用アセンブリを提供し、Windows 10 (22H2 以降) を含むデスクトップ環境を対象に SDL2/OpenGL の描画・入力を提供します。.NET 8 は2026年11月にサポート終了予定のため、2028年までサポートされる .NET 10 をアプリの対象にしています。ライセンスと配布条件は [`THIRD-PARTY-NOTICES.txt`](THIRD-PARTY-NOTICES.txt) と各公式パッケージ情報を参照してください。
 
 ## 実行・確認
 
-開発環境に .NET 8 SDK を用意し、リポジトリのルートで実行します。
+開発環境に .NET SDK 10.0.401 (または同じ feature band の最新パッチ) を用意し、リポジトリのルートで実行します。
 
 ```powershell
 dotnet restore
@@ -35,11 +35,11 @@ dotnet run
 ## Windows 配布用ビルド
 
 ```powershell
-dotnet publish -c Release -r win-x64 --self-contained true -o publish/win-x64
+dotnet publish -c Release -r win-x64 --self-contained false -o publish/win-x64
 Compress-Archive -Path publish/win-x64/* -DestinationPath Fighter-win-x64.zip
 ```
 
-`publish/win-x64` の全ファイルと `Assets/` を ZIP に含めて配布してください。単一 exe は有効化していません。MonoGame DesktopGL は SDL2/OpenGL とネイティブ実行時ファイルを使用するため、単一ファイル化や別 PC での動作は確認済みとは扱いません。配布前に開発環境のない Windows 10 22H2 以降の PC へ ZIP を展開し、起動、CPU 対戦、KO、再戦を確認してください。必要な場合は GPU ドライバーも更新してください。
+`publish/win-x64` の全ファイルと `Assets/` を ZIP に含めて配布してください。単一 exe は有効化していません。MonoGame DesktopGL は SDL2/OpenGL とネイティブ実行時ファイルを使用するため、単一ファイル化や別 PC での動作は確認済みとは扱いません。この framework-dependent 配布には [.NET 10 x64 Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) (SDK 不要) が必要です。配布前に開発環境のない Windows 10 22H2 以降の PC に .NET 10 Runtime を用意し、ZIP を展開して起動、CPU 対戦、KO、再戦を確認してください。必要な場合は GPU ドライバーも更新してください。
 
 ## 販売・ライセンス上の未解決事項
 

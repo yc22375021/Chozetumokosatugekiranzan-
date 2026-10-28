@@ -16,11 +16,25 @@ internal enum AnimationKind
     Idle,
     Walk,
     Crouch,
-    Airborne,
+    JumpStart,
+    JumpRise,
+    JumpFall,
     Attack,
     Hit,
     Guard
 }
+
+internal readonly record struct KeyBindings(
+    Keys Left,
+    Keys Right,
+    Keys Jump,
+    Keys Down,
+    Keys Light,
+    Keys Heavy,
+    Keys DebugSpecial,
+    Keys DebugOverlay,
+    Keys Start,
+    Keys Quit);
 
 internal readonly record struct MoveDefinition(
     string Name,
@@ -29,6 +43,7 @@ internal readonly record struct MoveDefinition(
     int ActiveFrames,
     int RecoveryFrames,
     int Range,
+    int HitHeight,
     int HitstunFrames,
     int GuardstunFrames,
     int Pushback,
@@ -64,16 +79,23 @@ internal static class GameData
     public const int FighterWidth = 40;
     public const int StandingHeight = 82;
     public const int CrouchingHeight = 52;
-    public const int HealthPerHit = 10;
+    public const int CpuDecisionMinFrames = 12;
+    public const int CpuDecisionMaxFrames = 20;
+    public const int CpuSpecialCooldownFrames = 20;
+    public const int CpuApproachDistance = 112;
+    public const int CpuGuardOdds = 5;
+    public const int CpuSpecialOdds = 7;
+    public const int CpuHeavyOdds = 3;
+    public const int JumpPrepFrames = 3;
 
     public static readonly MoveDefinition Light = new(
-        "LIGHT", 9, 5, 3, 10, 66, 14, 8, 20, 0, 14, 2);
+        "LIGHT", 9, 5, 3, 10, 66, 30, 14, 8, 20, 0, 14, 2);
 
     public static readonly MoveDefinition Heavy = new(
-        "HEAVY", 15, 9, 4, 17, 82, 22, 13, 34, 0, 18, 3);
+        "HEAVY", 15, 9, 4, 17, 82, 34, 22, 13, 34, 0, 18, 3);
 
     public static readonly MoveDefinition Special = new(
-        "SPECIAL", 24, 11, 5, 23, 142, 32, 19, 52, SpecialMeterCost, 20, 4);
+        "SPECIAL", 24, 11, 5, 23, 142, 42, 32, 19, 52, SpecialMeterCost, 20, 4);
 
     public static readonly IReadOnlyDictionary<MoveId, MoveDefinition> Moves =
         new Dictionary<MoveId, MoveDefinition>
@@ -83,20 +105,8 @@ internal static class GameData
             [MoveId.Special] = Special
         };
 
-    public static readonly IReadOnlyDictionary<Keys, string> KeyBindings =
-        new Dictionary<Keys, string>
-        {
-            [Keys.A] = "Left",
-            [Keys.D] = "Right",
-            [Keys.W] = "Jump",
-            [Keys.S] = "Down / Crouch",
-            [Keys.J] = "Light",
-            [Keys.K] = "Heavy",
-            [Keys.F2] = "Debug Special",
-            [Keys.F3] = "Debug Overlay",
-            [Keys.Enter] = "Start / Rematch",
-            [Keys.Escape] = "Quit"
-        };
+    public static readonly KeyBindings Controls = new(
+        Keys.A, Keys.D, Keys.W, Keys.S, Keys.J, Keys.K, Keys.F2, Keys.F3, Keys.Enter, Keys.Escape);
 
     public static readonly IReadOnlyDictionary<AnimationKind, SpriteAnimationDefinition> SpriteAnimations =
         new Dictionary<AnimationKind, SpriteAnimationDefinition>
@@ -104,7 +114,9 @@ internal static class GameData
             [AnimationKind.Idle] = Candidate("3316.png"),
             [AnimationKind.Walk] = Candidate("3312.png"),
             [AnimationKind.Crouch] = Candidate("3317.png"),
-            [AnimationKind.Airborne] = Candidate("3313.png"),
+            [AnimationKind.JumpStart] = Candidate("3313.png", loop: false),
+            [AnimationKind.JumpRise] = Candidate("3313.png"),
+            [AnimationKind.JumpFall] = Candidate("3313.png"),
             [AnimationKind.Attack] = Candidate("3316.png"),
             [AnimationKind.Hit] = Candidate("3316.png"),
             [AnimationKind.Guard] = Candidate("3315.png")
@@ -120,6 +132,6 @@ internal static class GameData
         "3317.png"
     ];
 
-    private static SpriteAnimationDefinition Candidate(string fileName) =>
-        new(fileName, [], Loop: true);
+    private static SpriteAnimationDefinition Candidate(string fileName, bool loop = true) =>
+        new(fileName, [], loop);
 }

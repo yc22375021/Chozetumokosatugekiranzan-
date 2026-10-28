@@ -10,6 +10,8 @@ internal enum RoundPhase
 internal enum FighterAction
 {
     Idle,
+    Walking,
+    Crouching,
     Attack,
     Hitstun,
     Guardstun,
@@ -69,6 +71,7 @@ internal sealed class Fighter
     public float X { get; set; }
     public float Altitude { get; set; }
     public float VerticalSpeed { get; set; }
+    public int AirborneFrames { get; set; }
     public int Facing { get; set; } = 1;
     public bool Grounded { get; set; } = true;
     public bool Crouching { get; set; }
@@ -85,11 +88,17 @@ internal sealed class Fighter
 
     public int BodyHeight => Crouching ? GameData.CrouchingHeight : GameData.StandingHeight;
 
-    public RectF BodyBox => new(
+    public RectF PushBox => new(
         X - GameData.FighterWidth / 2f,
         GameData.GroundY - Altitude - BodyHeight,
         GameData.FighterWidth,
         BodyHeight);
+
+    public RectF HurtBox => new(
+        X - GameData.FighterWidth * 0.375f,
+        GameData.GroundY - Altitude - BodyHeight + 4,
+        GameData.FighterWidth * 0.75f,
+        BodyHeight - 4);
 }
 
 internal sealed class InputBuffer
@@ -273,7 +282,7 @@ internal sealed class CpuController
             if (_specialPhase > 3)
             {
                 _specialPhase = 0;
-                _nextDecisionFrame = frame + 20;
+                _nextDecisionFrame = frame + GameData.CpuSpecialCooldownFrames;
             }
 
             return input;
@@ -281,21 +290,24 @@ internal sealed class CpuController
 
         if (frame >= _nextDecisionFrame)
         {
-            _nextDecisionFrame = frame + _random.Next(12, 21);
-            _chosenHorizontal = Math.Abs(opponent.X - cpu.X) > 112
+            _nextDecisionFrame = frame + _random.Next(
+                GameData.CpuDecisionMinFrames,
+                GameData.CpuDecisionMaxFrames + 1);
+            _chosenHorizontal = Math.Abs(opponent.X - cpu.X) > GameData.CpuApproachDistance
                 ? Math.Sign(opponent.X - cpu.X)
                 : 0;
-            _chosenGuard = _chosenHorizontal == 0 && _random.Next(0, 5) == 0;
+            _chosenGuard = _chosenHorizontal == 0 && _random.Next(0, GameData.CpuGuardOdds) == 0;
             _lightPulse = false;
             _heavyPulse = false;
 
             if (_chosenHorizontal == 0 && !_chosenGuard)
             {
-                if (cpu.Meter >= GameData.SpecialMeterCost && _random.Next(0, 7) == 0)
+                if (cpu.Meter >= GameData.SpecialMeterCost &&
+                    _random.Next(0, GameData.CpuSpecialOdds) == 0)
                 {
                     _specialPhase = 1;
                 }
-                else if (_random.Next(0, 3) == 0)
+                else if (_random.Next(0, GameData.CpuHeavyOdds) == 0)
                 {
                     _heavyPulse = true;
                 }
@@ -402,17 +414,16 @@ internal sealed class Battle
             return default;
         }
 
-        var height = fighter.CurrentMove == MoveId.Special ? 42 : 30;
         var y = GameData.GroundY - fighter.Altitude - fighter.BodyHeight + (fighter.Crouching ? 10 : 24);
         var x = fighter.Facing > 0
             ? fighter.X + GameData.FighterWidth / 2f
             : fighter.X - GameData.FighterWidth / 2f - move.Range;
-        return new RectF(x, y, move.Range, height);
+        return new RectF(x, y, move.Range, move.HitHeight);
     }
 
     public static bool TryStartMove(Fighter fighter, MoveId moveId)
     {
-        if (fighter.Action != FighterAction.Idle || !fighter.Grounded ||
+        if (!CanAct(fighter) || !fighter.Grounded ||
             !GameData.Moves.TryGetValue(moveId, out var move) || fighter.Meter < move.MeterCost)
         {
             return false;
@@ -429,38 +440,47 @@ internal sealed class Battle
 
     public static void ResolvePushApart(Fighter left, Fighter right)
     {
-        var minimumDistance = GameData.FighterWidth;
-        var distance = right.X - left.X;
-        var overlap = minimumDistance - Math.Abs(distance);
+        if (!left.PushBox.Intersects(right.PushBox))
+        {
+            return;
+        }
+
+        if (left.X > right.X)
+        {
+            (left, right) = (right, left);
+        }
+
+        var minimumDistance = (left.PushBox.Width + right.PushBox.Width) / 2f;
+        var overlap = minimumDistance - (right.X - left.X);
         if (overlap <= 0)
         {
             return;
         }
 
-        var direction = distance >= 0 ? 1 : -1;
         var leftMovement = overlap / 2f;
         var rightMovement = overlap - leftMovement;
-        left.X -= direction * leftMovement;
-        right.X += direction * rightMovement;
+        left.X -= leftMovement;
+        right.X += rightMovement;
         ClampToStage(left);
         ClampToStage(right);
 
-        var remaining = minimumDistance - Math.Abs(right.X - left.X);
+        var remaining = minimumDistance - (right.X - left.X);
         if (remaining > 0)
         {
-            var movable = left.X > GameData.StageLeft && right.X < GameData.StageRight;
-            if (movable)
+            var leftCanMove = left.X > GameData.StageLeft + GameData.FighterWidth / 2f;
+            var rightCanMove = right.X < GameData.StageRight - GameData.FighterWidth / 2f;
+            if (leftCanMove && rightCanMove)
             {
-                left.X -= direction * remaining / 2f;
-                right.X += direction * remaining / 2f;
+                left.X -= remaining / 2f;
+                right.X += remaining / 2f;
             }
-            else if (left.X > GameData.StageLeft)
+            else if (leftCanMove)
             {
-                left.X -= direction * remaining;
+                left.X -= remaining;
             }
-            else if (right.X < GameData.StageRight)
+            else if (rightCanMove)
             {
-                right.X += direction * remaining;
+                right.X += remaining;
             }
 
             ClampToStage(left);
@@ -473,14 +493,22 @@ internal sealed class Battle
         var direction = InputBuffer.ResolveDirection(input.Horizontal, input.Down, fighter.Facing);
         fighter.History.Sample(frame, direction, input.LightPressed, input.HeavyPressed);
 
-        if (fighter.Action != FighterAction.Idle || !fighter.Grounded)
+        var specialCommand = fighter.History.TryConsumeQuarterCircle(
+            frame,
+            GameData.CommandWindowFrames,
+            out _);
+        if (specialCommand)
         {
+            if (CanAct(fighter) && fighter.Grounded)
+            {
+                TryStartMove(fighter, MoveId.Special);
+            }
+
             return;
         }
 
-        if (fighter.History.TryConsumeQuarterCircle(frame, GameData.CommandWindowFrames, out _))
+        if (!CanAct(fighter) || !fighter.Grounded)
         {
-            TryStartMove(fighter, MoveId.Special);
             return;
         }
 
@@ -502,32 +530,48 @@ internal sealed class Battle
 
     private static void MoveFighter(Fighter fighter)
     {
-        if (fighter.Grounded)
+        if (fighter.Grounded && CanAct(fighter))
         {
-            if (fighter.Action == FighterAction.Idle && fighter.CurrentInput.JumpPressed)
+            if (fighter.CurrentInput.JumpPressed)
             {
                 fighter.Grounded = false;
                 fighter.Crouching = false;
                 fighter.VerticalSpeed = GameData.JumpSpeed;
-            }
-            else if (fighter.Action == FighterAction.Idle)
-            {
-                fighter.Crouching = fighter.CurrentInput.Down;
+                fighter.AirborneFrames = 0;
+                fighter.Action = FighterAction.Idle;
             }
         }
 
         fighter.IsGuarding = fighter.Grounded &&
             fighter.CurrentInput.Horizontal == -fighter.Facing &&
-            fighter.Action is FighterAction.Idle or FighterAction.Guardstun;
+            fighter.Action is FighterAction.Idle or FighterAction.Walking or
+                FighterAction.Crouching or FighterAction.Guardstun;
 
-        if (fighter.Action == FighterAction.Idle && fighter.Grounded &&
-            !fighter.Crouching && !fighter.IsGuarding)
+        if (CanAct(fighter) && fighter.Grounded)
         {
-            fighter.X += Math.Clamp(fighter.CurrentInput.Horizontal, -1, 1) * GameData.WalkSpeed;
+            fighter.Crouching = fighter.CurrentInput.Down && !fighter.IsGuarding;
+            if (fighter.IsGuarding)
+            {
+                fighter.Action = FighterAction.Idle;
+            }
+            else if (fighter.Crouching)
+            {
+                fighter.Action = FighterAction.Crouching;
+            }
+            else if (fighter.CurrentInput.Horizontal != 0)
+            {
+                fighter.X += Math.Clamp(fighter.CurrentInput.Horizontal, -1, 1) * GameData.WalkSpeed;
+                fighter.Action = FighterAction.Walking;
+            }
+            else
+            {
+                fighter.Action = FighterAction.Idle;
+            }
         }
 
         if (!fighter.Grounded)
         {
+            fighter.AirborneFrames++;
             fighter.Altitude += fighter.VerticalSpeed;
             fighter.VerticalSpeed -= GameData.Gravity;
             if (fighter.Altitude <= 0)
@@ -536,6 +580,7 @@ internal sealed class Battle
                 fighter.VerticalSpeed = 0;
                 fighter.Grounded = true;
                 fighter.Crouching = false;
+                fighter.AirborneFrames = 0;
             }
         }
 
@@ -596,7 +641,7 @@ internal sealed class Battle
             return false;
         }
 
-        return GetAttackBox(attacker).Intersects(defender.BodyBox);
+        return GetAttackBox(attacker).Intersects(defender.HurtBox);
     }
 
     private static void ApplyHit(Fighter attacker, Fighter defender)
@@ -646,6 +691,9 @@ internal sealed class Battle
             GameData.StageLeft + GameData.FighterWidth / 2f,
             GameData.StageRight - GameData.FighterWidth / 2f);
     }
+
+    private static bool CanAct(Fighter fighter) =>
+        fighter.Action is FighterAction.Idle or FighterAction.Walking or FighterAction.Crouching;
 }
 
 internal static class BattleVerification
@@ -670,12 +718,82 @@ internal static class BattleVerification
         Check(history.TryConsumeQuarterCircle(3, 16, out _), "quarter-circle command");
         Check(!history.TryConsumeQuarterCircle(3, 16, out _), "command input consumed once");
         Check(InputBuffer.ResolveDirection(-1, true, -1) == RelativeDirection.DownForward, "left-facing relative forward");
+        var boundedHistory = new InputBuffer(3);
+        for (var i = 1; i <= 5; i++)
+        {
+            boundedHistory.Sample(i, (RelativeDirection)(i % 4), false, false);
+        }
+
+        Check(boundedHistory.Count == 3, "input history capacity");
 
         var player = new Fighter("P1", false, 100) { Meter = 0 };
         Check(!Battle.TryStartMove(player, MoveId.Special), "special rejected without meter");
         player.Meter = GameData.MaximumMeter;
         player.Action = FighterAction.Hitstun;
         Check(!Battle.TryStartMove(player, MoveId.Light), "move rejected during hitstun");
+
+        var specialBattle = new Battle();
+        specialBattle.StartRound();
+        specialBattle.Player.X = 800;
+        specialBattle.Cpu.X = 500;
+        specialBattle.Player.Meter = GameData.MaximumMeter;
+        specialBattle.Tick(new FrameInput(Down: true));
+        specialBattle.Tick(new FrameInput(Horizontal: -1, Down: true));
+        specialBattle.Tick(new FrameInput(Horizontal: -1, LightPressed: true));
+        Check(specialBattle.Player.Facing == -1 &&
+              specialBattle.Player.Action == FighterAction.Attack &&
+              specialBattle.Player.CurrentMove == MoveId.Special &&
+              specialBattle.Player.Meter == GameData.MaximumMeter - GameData.SpecialMeterCost,
+            "left-facing command starts special without light attack");
+        for (var i = 0; i < 8; i++)
+        {
+            specialBattle.Tick(new FrameInput(Horizontal: -1));
+        }
+
+        Check(specialBattle.Player.CurrentMove == MoveId.Special &&
+              specialBattle.Player.Meter == GameData.MaximumMeter - GameData.SpecialMeterCost,
+            "special does not repeat from buffered history");
+
+        var insufficientBattle = new Battle();
+        insufficientBattle.StartRound();
+        insufficientBattle.Player.Meter = GameData.SpecialMeterCost - 1;
+        insufficientBattle.Tick(new FrameInput(Down: true));
+        insufficientBattle.Tick(new FrameInput(Horizontal: 1, Down: true));
+        insufficientBattle.Tick(new FrameInput(Horizontal: 1, LightPressed: true));
+        Check(insufficientBattle.Player.CurrentMove == MoveId.None &&
+              insufficientBattle.Player.Meter == GameData.SpecialMeterCost - 1,
+            "failed special command does not fall through to light");
+
+        var bufferedBattle = new Battle();
+        bufferedBattle.StartRound();
+        bufferedBattle.Player.Action = FighterAction.Hitstun;
+        bufferedBattle.Player.StunFramesRemaining = 4;
+        bufferedBattle.Player.Meter = GameData.SpecialMeterCost;
+        bufferedBattle.Tick(new FrameInput(Down: true));
+        bufferedBattle.Tick(new FrameInput(Horizontal: 1, Down: true));
+        bufferedBattle.Tick(new FrameInput(Horizontal: 1, LightPressed: true));
+        for (var i = 0; i < 3; i++)
+        {
+            bufferedBattle.Tick(default);
+        }
+
+        Check(bufferedBattle.Player.Action == FighterAction.Idle &&
+              bufferedBattle.Player.CurrentMove == MoveId.None,
+            "special command during stun is not queued");
+
+        var guardBattle = new Battle();
+        guardBattle.StartRound();
+        guardBattle.Player.X = 400;
+        guardBattle.Cpu.X = 490;
+        Battle.TryStartMove(guardBattle.Cpu, MoveId.Light);
+        for (var i = 0; i < 8; i++)
+        {
+            guardBattle.Tick(new FrameInput(Horizontal: -1));
+        }
+
+        Check(guardBattle.Player.Health == GameData.MaximumHealth - GameData.Light.GuardDamage &&
+              guardBattle.Player.Action == FighterAction.Guardstun,
+            "ground guard damage and guardstun");
 
         var attackRight = new Fighter("P1", false, 300) { Facing = 1 };
         var attackLeft = new Fighter("CPU", true, 500) { Facing = -1 };
@@ -718,6 +836,20 @@ internal static class BattleVerification
         var right = new Fighter("R", true, 410);
         Battle.ResolvePushApart(left, right);
         Check(Math.Abs(right.X - left.X) >= GameData.FighterWidth - 0.01f, "push-apart collision");
+        var airborne = new Fighter("AIR", true, 410)
+        {
+            Grounded = false,
+            Altitude = GameData.StandingHeight + 1
+        };
+        var grounded = new Fighter("GROUND", false, 400);
+        Battle.ResolvePushApart(grounded, airborne);
+        Check(Math.Abs(airborne.X - grounded.X) == 10, "push boxes do not collide vertically");
+        var wallLeft = new Fighter("L", false, GameData.StageRight - GameData.FighterWidth / 2f);
+        var wallRight = new Fighter("R", true, wallLeft.X - 10);
+        Battle.ResolvePushApart(wallLeft, wallRight);
+        Check(Math.Abs(wallRight.X - wallLeft.X) >= GameData.FighterWidth - 0.01f &&
+              wallLeft.X <= GameData.StageRight - GameData.FighterWidth / 2f,
+            "push-apart at stage wall");
 
         var drawBattle = new Battle();
         drawBattle.StartRound();
@@ -738,6 +870,18 @@ internal static class BattleVerification
         Check(drawBattle.Player.Health == GameData.MaximumHealth && drawBattle.Player.Meter == 0 &&
               drawBattle.Player.History.Count == 0 && !drawBattle.Player.AttackHasHit,
             "rematch state reset");
+
+        var cpuBattle = new Battle();
+        cpuBattle.StartRound();
+        for (var i = 0; i < GameData.MatchTimeSeconds * GameData.FramesPerSecond &&
+             cpuBattle.Phase == RoundPhase.Fighting; i++)
+        {
+            cpuBattle.Tick(default);
+        }
+
+        Check(cpuBattle.Phase == RoundPhase.Result &&
+              cpuBattle.Result is RoundResult.CpuWin or RoundResult.Draw,
+            "CPU can complete a match");
 
         Console.WriteLine($"Battle self-test passed ({checks} checks).");
     }

@@ -66,16 +66,17 @@ internal sealed class FightingGame : Game
         _pixel.SetData([Color.White]);
 
         var assetsDirectory = Path.Combine(AppContext.BaseDirectory, "Assets");
-        foreach (var animation in GameData.SpriteAnimations.Values
-                     .GroupBy(item => item.FileName, StringComparer.OrdinalIgnoreCase)
-                     .Select(group => group.First()))
+        foreach (var group in GameData.SpriteAnimations.Values
+                     .GroupBy(item => item.FileName, StringComparer.OrdinalIgnoreCase))
         {
-            if (animation.Frames.Length == 0)
+            var frames = group.SelectMany(animation => animation.Frames).ToArray();
+            if (frames.Length == 0)
             {
                 continue;
             }
 
-            var path = Path.Combine(assetsDirectory, animation.FileName);
+            var fileName = group.Key;
+            var path = Path.Combine(assetsDirectory, fileName);
             if (!File.Exists(path))
             {
                 continue;
@@ -85,11 +86,14 @@ internal sealed class FightingGame : Game
             {
                 using var stream = File.OpenRead(path);
                 var texture = Texture2D.FromStream(GraphicsDevice, stream);
-                if (animation.Frames.All(frame =>
+                if (frames.All(frame =>
                     frame.Source.X >= 0 && frame.Source.Y >= 0 &&
-                    frame.Source.Right <= texture.Width && frame.Source.Bottom <= texture.Height))
+                    frame.Source.Width > 0 && frame.Source.Height > 0 &&
+                    frame.Source.Right <= texture.Width && frame.Source.Bottom <= texture.Height &&
+                    frame.Origin.X >= 0 && frame.Origin.Y >= 0 &&
+                    frame.Origin.X <= frame.Source.Width && frame.Origin.Y <= frame.Source.Height))
                 {
-                    _sprites[animation.FileName] = texture;
+                    _sprites[fileName] = texture;
                 }
                 else
                 {
@@ -100,6 +104,9 @@ internal sealed class FightingGame : Game
             {
             }
             catch (InvalidOperationException)
+            {
+            }
+            catch (ArgumentException)
             {
             }
         }
@@ -132,7 +139,7 @@ internal sealed class FightingGame : Game
             return;
         }
 
-        if (current.IsKeyDown(Keys.Escape))
+        if (current.IsKeyDown(GameData.Controls.Quit))
         {
             Exit();
         }
@@ -149,20 +156,21 @@ internal sealed class FightingGame : Game
             return;
         }
 
-        if (Pressed(current, Keys.F3))
+        if (Pressed(current, GameData.Controls.DebugOverlay))
         {
             _debug = !_debug;
         }
 
-        var horizontal = (current.IsKeyDown(Keys.D) ? 1 : 0) - (current.IsKeyDown(Keys.A) ? 1 : 0);
+        var horizontal = (current.IsKeyDown(GameData.Controls.Right) ? 1 : 0) -
+                         (current.IsKeyDown(GameData.Controls.Left) ? 1 : 0);
         var input = new FrameInput(
             Horizontal: horizontal,
-            Down: current.IsKeyDown(Keys.S),
-            JumpPressed: Pressed(current, Keys.W),
-            LightPressed: Pressed(current, Keys.J),
-            HeavyPressed: Pressed(current, Keys.K),
-            DebugSpecialPressed: Pressed(current, Keys.F2),
-            StartPressed: Pressed(current, Keys.Enter));
+            Down: current.IsKeyDown(GameData.Controls.Down),
+            JumpPressed: Pressed(current, GameData.Controls.Jump),
+            LightPressed: Pressed(current, GameData.Controls.Light),
+            HeavyPressed: Pressed(current, GameData.Controls.Heavy),
+            DebugSpecialPressed: Pressed(current, GameData.Controls.DebugSpecial),
+            StartPressed: Pressed(current, GameData.Controls.Start));
         _battle.Tick(input);
         _previousKeyboard = current;
         base.Update(gameTime);
@@ -190,11 +198,17 @@ internal sealed class FightingGame : Game
             case RoundPhase.Title:
                 DrawCentered("FIGHTER", 192, 4, Color.White);
                 DrawCentered("CPU BATTLE", 246, 2, PlayerColor);
-                DrawCentered("ENTER START", 320, 2, Color.White);
-                DrawCentered("A D MOVE  W JUMP  S CROUCH", 366, 1, Color.LightGray);
-                DrawCentered("J LIGHT  K HEAVY  BACK GUARD", 390, 1, Color.LightGray);
-                DrawCentered("DOWN DOWN-FORWARD FORWARD J SPECIAL", 414, 1, Color.LightGray);
-                DrawCentered("F2 DEBUG SPECIAL  F3 DEBUG VIEW", 438, 1, Color.LightGray);
+                DrawCentered($"{GameData.Controls.Start} START", 320, 2, Color.White);
+                DrawCentered($"{GameData.Controls.Left} {GameData.Controls.Right} MOVE  " +
+                             $"{GameData.Controls.Jump} JUMP  {GameData.Controls.Down} CROUCH",
+                    366, 1, Color.LightGray);
+                DrawCentered($"{GameData.Controls.Light} LIGHT  {GameData.Controls.Heavy} HEAVY  BACK GUARD",
+                    390, 1, Color.LightGray);
+                DrawCentered($"DOWN DOWN-FORWARD FORWARD {GameData.Controls.Light} SPECIAL",
+                    414, 1, Color.LightGray);
+                DrawCentered($"{GameData.Controls.DebugSpecial} DEBUG SPECIAL  " +
+                             $"{GameData.Controls.DebugOverlay} DEBUG VIEW",
+                    438, 1, Color.LightGray);
                 break;
             case RoundPhase.Result:
                 DrawRect(new Rectangle(220, 188, 520, 160), new Color(5, 8, 18, 220));
@@ -234,7 +248,17 @@ internal sealed class FightingGame : Game
         current.IsKeyDown(key) && _previousKeyboard.IsKeyUp(key);
 
     private static bool ControlsReleased(KeyboardState state) =>
-        new[] { Keys.A, Keys.D, Keys.W, Keys.S, Keys.J, Keys.K, Keys.F2, Keys.Enter }
+        new[]
+        {
+            GameData.Controls.Left,
+            GameData.Controls.Right,
+            GameData.Controls.Jump,
+            GameData.Controls.Down,
+            GameData.Controls.Light,
+            GameData.Controls.Heavy,
+            GameData.Controls.DebugSpecial,
+            GameData.Controls.Start
+        }
             .All(key => state.IsKeyUp(key));
 
     private string ResultText() => _battle.Result switch
@@ -266,6 +290,8 @@ internal sealed class FightingGame : Game
         {
             DrawText("P1 HP", 42, 88, 1, Color.LightGray);
             DrawText("CPU HP", 840, 88, 1, Color.LightGray);
+            DrawText("METER", 42, 80, 1, Color.LightGray);
+            DrawText("METER", 840, 80, 1, Color.LightGray);
         }
     }
 
@@ -285,9 +311,12 @@ internal sealed class FightingGame : Game
             FighterAction.Attack => AnimationKind.Attack,
             FighterAction.Hitstun => AnimationKind.Hit,
             FighterAction.Guardstun => AnimationKind.Guard,
-            _ when !fighter.Grounded => AnimationKind.Airborne,
-            _ when fighter.Crouching => AnimationKind.Crouch,
-            _ when Math.Abs(fighter.CurrentInput.Horizontal) > 0 => AnimationKind.Walk,
+            FighterAction.Crouching => AnimationKind.Crouch,
+            FighterAction.Walking => AnimationKind.Walk,
+            _ when !fighter.Grounded && fighter.AirborneFrames < GameData.JumpPrepFrames =>
+                AnimationKind.JumpStart,
+            _ when !fighter.Grounded && fighter.VerticalSpeed > 0 => AnimationKind.JumpRise,
+            _ when !fighter.Grounded => AnimationKind.JumpFall,
             _ => AnimationKind.Idle
         };
         if (!TryDrawSprite(fighter, kind))
@@ -302,7 +331,8 @@ internal sealed class FightingGame : Game
 
         if (_debug)
         {
-            DrawOutline(ToRectangle(fighter.BodyBox), Color.LimeGreen);
+            DrawOutline(ToRectangle(fighter.PushBox), Color.DodgerBlue);
+            DrawOutline(ToRectangle(fighter.HurtBox), Color.LimeGreen);
             var attack = Battle.GetAttackBox(fighter);
             if (attack.Width > 0)
             {
@@ -320,7 +350,17 @@ internal sealed class FightingGame : Game
         }
 
         var totalFrames = animation.Frames.Sum(frame => Math.Max(1, frame.DurationFrames));
-        var animationFrame = fighter.Action == FighterAction.Attack ? fighter.MoveFrame : _battle.Frame / 6;
+        var animationFrame = fighter.Action == FighterAction.Attack
+            ? fighter.MoveFrame
+            : kind switch
+            {
+                AnimationKind.JumpStart => fighter.AirborneFrames,
+                AnimationKind.JumpRise => Math.Max(0, fighter.AirborneFrames - GameData.JumpPrepFrames),
+                AnimationKind.JumpFall => Math.Max(
+                    0,
+                    fighter.AirborneFrames - (int)Math.Ceiling(GameData.JumpSpeed / GameData.Gravity)),
+                _ => _battle.Frame / 6
+            };
         var frameNumber = animation.Loop ? animationFrame % totalFrames : Math.Min(animationFrame, totalFrames - 1);
         var selected = animation.Frames[0];
         foreach (var frame in animation.Frames)
@@ -370,8 +410,7 @@ internal sealed class FightingGame : Game
         var crouch = fighter.Crouching ? 18 : 0;
         DrawRect(new Rectangle(centerX - 11, feetY - 54 + crouch, 22, 36 - crouch), tint);
         DrawRect(new Rectangle(centerX - 10, feetY - 78 + crouch, 20, 20), new Color(247, 213, 177));
-        var walkOffset = fighter.Action == FighterAction.Idle &&
-                         Math.Abs(fighter.CurrentInput.Horizontal) > 0
+        var walkOffset = fighter.Action == FighterAction.Walking
             ? (int)(Math.Sin(_battle.Frame / 4d) * 5)
             : 0;
         DrawRect(new Rectangle(centerX - 13, feetY - 23 + crouch, 10, 21 - crouch / 2 + walkOffset), tint);
@@ -396,9 +435,11 @@ internal sealed class FightingGame : Game
     private void DrawDebug()
     {
         DrawRect(new Rectangle(320, 96, 320, 70), new Color(5, 8, 18, 210));
-        DrawCenteredAt($"{_battle.Player.Action} {_battle.Player.CurrentMove} {_battle.Player.MoveFrame}",
+        DrawCenteredAt($"{_battle.Player.Action} {_battle.Player.CurrentMove} " +
+                       $"{_battle.Player.MoveFrame} S{_battle.Player.StunFramesRemaining}",
             480, 108, 1, Color.LimeGreen);
-        DrawCenteredAt($"{_battle.Cpu.Action} {_battle.Cpu.CurrentMove} {_battle.Cpu.MoveFrame}",
+        DrawCenteredAt($"{_battle.Cpu.Action} {_battle.Cpu.CurrentMove} " +
+                       $"{_battle.Cpu.MoveFrame} S{_battle.Cpu.StunFramesRemaining}",
             480, 132, 1, Color.Orange);
     }
 
