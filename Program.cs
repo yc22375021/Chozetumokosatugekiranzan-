@@ -281,7 +281,6 @@ internal sealed class FightingGame : Game
                 $"移動：{GameData.Controls.Left} / {GameData.Controls.Right} または ← / →",
                 $"ジャンプ：{GameData.Controls.Jump} または ↑　しゃがみ：{GameData.Controls.Down} または ↓",
                 $"{light}：弱　{medium}：中　{heavy}：強　{guard}：ガード",
-                "地上では後ろ入力でも通常ガード",
                 $"{guard} + ↓：特殊ガード・納刀",
                 $"同時押し：{light} + {medium}（完全回避）／{light} + {heavy}（深呼吸）",
                 "Enter：開始・再開　F1：説明画面を開閉（対戦中は一時停止）"

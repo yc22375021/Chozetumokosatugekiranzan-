@@ -371,6 +371,32 @@ internal static class BattleVerification
         for (var frame = 0; frame < CombatTuning.ChordFrames; frame++) upward.Tick(new(UpHeld: true));
         Check(upward.Player.Grounded && upward.Player.CurrentMove == MoveIds.Toppa &&
               upward.Player.Execution!.DirectionY == 1, "up plus medium thrust takes priority over jump");
+        foreach (var state in Enum.GetValues<SwordState>())
+        foreach (var playerOnLeft in new[] { true, false })
+        foreach (var forward in new[] { true, false })
+        {
+            var walkingDirection = new Battle();
+            walkingDirection.StartRound();
+            walkingDirection.Player.SwordState = state;
+            walkingDirection.Player.X = playerOnLeft ? 300 : 700;
+            walkingDirection.Cpu.X = playerOnLeft ? 700 : 300;
+            var expectedFacing = playerOnLeft ? 1 : -1;
+            var horizontal = expectedFacing * (forward ? 1 : -1);
+            var previousX = walkingDirection.Player.X;
+            walkingDirection.Tick(new(Horizontal: horizontal));
+            Check(walkingDirection.Player.Facing == expectedFacing &&
+                  Math.Abs(walkingDirection.Player.X - previousX -
+                           horizontal * GameData.WalkSpeed) < .001f &&
+                  walkingDirection.Player.Action == FighterAction.Walking &&
+                  !walkingDirection.Player.IsGuarding,
+                $"{state} player on {(playerOnLeft ? "left" : "right")} can {(forward ? "advance" : "retreat")} without guard");
+        }
+        var explicitGuard = new Battle();
+        explicitGuard.StartRound();
+        var guardedPosition = explicitGuard.Player.X;
+        explicitGuard.Tick(new(GuardHeld: true));
+        Check(explicitGuard.Player.IsGuarding && explicitGuard.Player.X == guardedPosition,
+            "explicit guard button still guards independently of movement direction");
         var walking = new Battle();
         walking.StartRound();
         walking.Player.BreathFramesRemaining = 60;

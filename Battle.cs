@@ -200,8 +200,7 @@ internal sealed class Battle
     private static void MoveFighter(Fighter fighter)
     {
         var canMove = MoveController.CanMove(fighter);
-        var guarding = fighter.Grounded && (fighter.CurrentInput.GuardHeld ||
-            fighter.CurrentInput.Horizontal == -fighter.Facing);
+        var guarding = fighter.Grounded && fighter.CurrentInput.GuardHeld;
         fighter.IsGuarding = (guarding && ((canMove && fighter.Action != FighterAction.Attack) ||
             fighter.Action == FighterAction.Guardstun)) ||
             MoveController.Active(fighter)?.Guards == true;
