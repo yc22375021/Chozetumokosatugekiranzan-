@@ -149,12 +149,12 @@ internal sealed class FightingGame : Game
                 DrawCentered($"{GameData.Controls.Left} {GameData.Controls.Right} MOVE  " +
                              $"{GameData.Controls.Jump} JUMP  {GameData.Controls.Down} CROUCH",
                     366, 1, Color.LightGray);
-                DrawCentered($"{GameData.Controls.Light} LIGHT  {GameData.Controls.Heavy} HEAVY  BACK GUARD",
+                DrawCentered($"{GameData.Controls.Light} LIGHT  {GameData.Controls.Medium} MEDIUM  " +
+                             $"{GameData.Controls.Heavy} HEAVY  {GameData.Controls.Guard} GUARD",
                     390, 1, Color.LightGray);
-                DrawCentered($"DOWN DOWN-FORWARD FORWARD {GameData.Controls.Light} SPECIAL",
+                DrawCentered($"{GameData.Controls.Guard} + DOWN SPECIAL GUARD / SHEATHE",
                     414, 1, Color.LightGray);
-                DrawCentered($"{GameData.Controls.DebugSpecial} DEBUG SPECIAL  " +
-                             $"{GameData.Controls.DebugOverlay} DEBUG VIEW",
+                DrawCentered($"{GameData.Controls.Help} HOW TO PLAY  {GameData.Controls.DebugOverlay} DEBUG VIEW",
                     438, 1, Color.LightGray);
                 break;
             case RoundPhase.Result:
@@ -205,22 +205,48 @@ internal sealed class FightingGame : Game
     private void DrawInstructions()
     {
         DrawRect(new Rectangle(0, 0, GameData.ScreenWidth, GameData.ScreenHeight), new Color(5, 8, 18, 245));
-        DrawCentered("HOW TO PLAY", 38, 3, Color.White);
-        DrawCentered(_battle.Phase == RoundPhase.Fighting ? "BATTLE PAUSED" : "BEFORE BATTLE", 78, 2, PlayerColor);
-        DrawCentered($"{GameData.Controls.Left} / {GameData.Controls.Right} MOVE - HOLD BACK ON GROUND TO GUARD", 120, 2, Color.White);
-        DrawCentered($"{GameData.Controls.Jump} JUMP / {GameData.Controls.Down} CROUCH", 152, 2, Color.White);
-        DrawCentered($"{GameData.Controls.Light} LIGHT / {GameData.Controls.Heavy} HEAVY", 184, 2, Color.White);
-        DrawCentered($"SPECIAL: DOWN - DOWN-FORWARD - FORWARD + {GameData.Controls.Light}", 220, 1, Color.LightGray);
-        DrawCentered($"FACING RIGHT: {GameData.Controls.Down} - {GameData.Controls.Down}+{GameData.Controls.Right} - " +
-                     $"{GameData.Controls.Right}+{GameData.Controls.Light}", 240, 1, Color.LightGray);
-        DrawCentered($"FACING LEFT: {GameData.Controls.Down} - {GameData.Controls.Down}+{GameData.Controls.Left} - " +
-                     $"{GameData.Controls.Left}+{GameData.Controls.Light}", 260, 1, Color.LightGray);
-        DrawCentered($"NEEDS {GameData.Special.MeterCost} METER - COST {GameData.Special.MeterCost}", 282, 1, MeterColor);
-        DrawCentered($"GROUND ONLY - NOT ATTACKING OR STUNNED - WITHIN {GameData.CommandWindowFrames} FRAMES",
-            302, 1, Color.LightGray);
-        DrawCentered($"{GameData.Controls.Help} HELP / PAUSE - {GameData.Controls.Quit} QUIT - " +
-                     $"{GameData.Controls.DebugSpecial} DEBUG SPECIAL / {GameData.Controls.DebugOverlay} DEBUG VIEW",
-            322, 1, Color.LightGray);
+        DrawCentered("HOW TO PLAY", 20, 3, Color.White);
+        DrawCentered(_battle.Phase == RoundPhase.Fighting ? "BATTLE PAUSED" : "BEFORE BATTLE", 56, 2, PlayerColor);
+        DrawCentered($"ARROWS / {GameData.Controls.Jump}{GameData.Controls.Left}{GameData.Controls.Down}{GameData.Controls.Right} MOVE - " +
+                     $"{GameData.Controls.Jump} / UP JUMP - " +
+                     $"{GameData.Controls.Down} / DOWN CROUCH", 88, 1, Color.White);
+        DrawCentered($"{GameData.Controls.Light} LIGHT / {GameData.Controls.Medium} MEDIUM / " +
+                     $"{GameData.Controls.Heavy} HEAVY / {GameData.Controls.Guard} GUARD - BACK GUARD ALSO AVAILABLE",
+            106, 1, Color.White);
+        DrawText("SHEATHED - ROUND START", 30, 134, 1, PlayerColor);
+        DrawText("DRAWN - PERSISTS UNTIL SHEATHED", 495, 134, 1, CpuColor);
+        var light = GameData.Controls.Light;
+        var medium = GameData.Controls.Medium;
+        var heavy = GameData.Controls.Heavy;
+        string[] sheathed =
+        [
+            $"{light} HAND CHOP - FREE CANCEL EVEN ON WHIFF",
+            $"{medium} SCABBARD THRUST - {medium} SPIN - {medium} THRUST / SHEATHE",
+            $"{heavy} QUICK DRAW - DRAWS AT START",
+            $"{light}+{medium} PERFECT EVADE - ATTACK CANCEL ON SUCCESS ONLY",
+            $"{light}+{heavy} DEEP BREATH - 3 SECOND BUFF",
+            $"{light} THEN {medium} ROTATING SWORD DANCE - {medium} UP TO 6 SPINS"
+        ];
+        string[] drawn =
+        [
+            $"{light} SLASH - 3 EXTRA {light} PRESSES / 4 HITS TOTAL",
+            $"{medium} DIRECTIONAL THRUST - NEUTRAL: FACING",
+            $"{heavy} FLASH SWORD - UNIMPLEMENTED",
+            $"{light}+{medium} AIR THRUST - UNIMPLEMENTED",
+            $"{light}+{heavy} BLADE RUSH - TIP COUNTER EFFECT UNDEFINED",
+            $"{light} THEN {medium} ARMORED SLASH - SUPER ARMOR"
+        ];
+        for (var index = 0; index < sheathed.Length; index++)
+        {
+            DrawText(sheathed[index], 30, 156 + index * 18, 1, Color.White);
+            DrawText(drawn[index], 495, 156 + index * 18, 1, Color.White);
+        }
+        DrawCentered($"{GameData.Controls.Guard}+DOWN SPECIAL GUARD / SHEATHE ON INPUT - GROUND / IDLE OR CHOP CANCEL",
+            276, 1, MeterColor);
+        DrawCentered($"{medium}+{heavy} UNDEFINED IN BOTH STATES - NO SINGLE ATTACK FALLBACK", 294, 1, Color.LightGray);
+        DrawCentered($"PLUS = TOGETHER WITHIN {CombatTuning.ChordFrames}F - THEN = AFTER FIRST MOVE STARTS - BUFFER {CombatTuning.BufferFrames}F",
+            310, 1, Color.LightGray);
+        DrawCentered("PROTOTYPE TIMINGS / DAMAGE / DEFENSE - EVADE ASSIST OFF BY DEFAULT", 326, 1, Color.LightGray);
 
         var bounds = GameSession.CheckboxBounds;
         DrawOutline(new Rectangle(bounds.X + 8, bounds.Y + 8, 26, 26), Color.White);
@@ -238,7 +264,8 @@ internal sealed class FightingGame : Game
                 ? $"{GameData.Controls.Start} / CLICK RESUME"
                 : $"{GameData.Controls.Start} / CLICK START BATTLE",
             440, 2, Color.White);
-        DrawCentered($"{GameData.Controls.Help} CAN ALWAYS REOPEN HELP DURING BATTLE", 486, 1, Color.LightGray);
+        DrawCentered($"{GameData.Controls.Help} HELP / PAUSE - {GameData.Controls.DebugOverlay} DEBUG VIEW - " +
+                     $"{GameData.Controls.Quit} QUIT", 486, 1, Color.LightGray);
     }
 
     private string ResultText() => _battle.Result switch
@@ -273,6 +300,8 @@ internal sealed class FightingGame : Game
             DrawText("METER", 42, 80, 1, Color.LightGray);
             DrawText("METER", 840, 80, 1, Color.LightGray);
             DrawCentered($"{GameData.Controls.Help} HELP / PAUSE", 110, 1, Color.LightGray);
+            DrawText($"P1 {_battle.Player.SwordState} / {_battle.Player.LastMoveResult}", 42, 470, 1, PlayerColor);
+            DrawText($"CPU {_battle.Cpu.SwordState} / {_battle.Cpu.LastMoveResult}", 495, 470, 1, CpuColor);
         }
     }
 
@@ -319,6 +348,8 @@ internal sealed class FightingGame : Game
             {
                 DrawOutline(ToRectangle(attack), Color.Red);
             }
+            var tip = Battle.GetCounterTip(fighter);
+            if (tip.Width > 0) DrawOutline(ToRectangle(tip), Color.Yellow);
         }
     }
 
@@ -405,8 +436,7 @@ internal sealed class FightingGame : Game
         DrawRect(new Rectangle(armX, armY, armReach, 9), tint);
         DrawRect(new Rectangle(centerX - 4, armY - 2, 9, 8), new Color(247, 213, 177));
 
-        if (fighter.Action == FighterAction.Attack && fighter.CurrentMove == MoveId.Special &&
-            fighter.MoveFrame >= GameData.Special.StartupFrames)
+        if (MoveController.Active(fighter) is { } move && fighter.MoveFrame >= move.Performance.StartupFrames)
         {
             var effectX = fighter.Facing > 0 ? centerX + 26 : centerX - 66;
             DrawRect(new Rectangle(effectX, feetY - 50, 40, 16), new Color(137, 113, 255, 220));
@@ -415,13 +445,21 @@ internal sealed class FightingGame : Game
 
     private void DrawDebug()
     {
-        DrawRect(new Rectangle(320, 96, 320, 70), new Color(5, 8, 18, 210));
-        DrawCenteredAt($"{_battle.Player.Action} {_battle.Player.CurrentMove} " +
-                       $"{_battle.Player.MoveFrame} S{_battle.Player.StunFramesRemaining}",
-            480, 108, 1, Color.LimeGreen);
-        DrawCenteredAt($"{_battle.Cpu.Action} {_battle.Cpu.CurrentMove} " +
-                       $"{_battle.Cpu.MoveFrame} S{_battle.Cpu.StunFramesRemaining}",
-            480, 132, 1, Color.Orange);
+        DrawRect(new Rectangle(20, 128, 920, 108), new Color(5, 8, 18, 210));
+        DrawFighterDebug(_battle.Player, 138, Color.LimeGreen);
+        DrawFighterDebug(_battle.Cpu, 186, Color.Orange);
+    }
+
+    private void DrawFighterDebug(Fighter fighter, int y, Color color)
+    {
+        MoveRegistry.Default.TryGet(fighter.CurrentMove, out var registration);
+        DrawText($"{fighter.Name} {fighter.SwordState} / {fighter.Action} / " +
+                 $"{registration?.DisplayName ?? "NONE"} / ID {fighter.CurrentMove}", 30, y, 1, color);
+        DrawText($"KEY {registration?.Key ?? "-"} / STAGE {fighter.Execution?.Stage ?? 0} / " +
+                 $"ORIGIN {fighter.Execution?.OriginId ?? 0} / FRAME {fighter.MoveFrame}", 30, y + 13, 1, color);
+        DrawText($"REQUEST {fighter.LastMoveResult} ID {fighter.LastRequestedMoveId} / BUFF {fighter.BreathFramesRemaining} / " +
+                 $"EVADE SUCCESS {fighter.Execution?.EvadeSucceeded == true} / TIP CONTACT {fighter.CounterTipContact}",
+            30, y + 26, 1, color);
     }
 
     private void DrawRect(Rectangle rectangle, Color color)

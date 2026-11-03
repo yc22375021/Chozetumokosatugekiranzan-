@@ -87,13 +87,15 @@ internal sealed class GameSession
             }
 
             Battle.Tick(new FrameInput(
-                Horizontal: (keyboard.IsKeyDown(GameData.Controls.Right) ? 1 : 0) -
-                            (keyboard.IsKeyDown(GameData.Controls.Left) ? 1 : 0),
-                Down: keyboard.IsKeyDown(GameData.Controls.Down),
-                JumpPressed: Pressed(keyboard, GameData.Controls.Jump),
+                Horizontal: (keyboard.IsKeyDown(GameData.Controls.Right) || keyboard.IsKeyDown(Keys.Right) ? 1 : 0) -
+                            (keyboard.IsKeyDown(GameData.Controls.Left) || keyboard.IsKeyDown(Keys.Left) ? 1 : 0),
+                Down: keyboard.IsKeyDown(GameData.Controls.Down) || keyboard.IsKeyDown(Keys.Down),
+                JumpPressed: Pressed(keyboard, GameData.Controls.Jump) || Pressed(keyboard, Keys.Up),
+                UpHeld: keyboard.IsKeyDown(GameData.Controls.Jump) || keyboard.IsKeyDown(Keys.Up),
                 LightPressed: Pressed(keyboard, GameData.Controls.Light),
                 HeavyPressed: Pressed(keyboard, GameData.Controls.Heavy),
-                DebugSpecialPressed: Pressed(keyboard, GameData.Controls.DebugSpecial),
+                MediumPressed: Pressed(keyboard, GameData.Controls.Medium),
+                GuardHeld: keyboard.IsKeyDown(GameData.Controls.Guard),
                 StartPressed: start));
         }
 
@@ -121,7 +123,8 @@ internal sealed class GameSession
         {
             GameData.Controls.Left, GameData.Controls.Right, GameData.Controls.Jump,
             GameData.Controls.Down, GameData.Controls.Light, GameData.Controls.Heavy,
-            GameData.Controls.DebugSpecial, GameData.Controls.DebugOverlay,
+            GameData.Controls.Medium, GameData.Controls.Guard, Keys.Left, Keys.Right, Keys.Up, Keys.Down,
+            GameData.Controls.DebugOverlay,
             GameData.Controls.Start, GameData.Controls.Help, GameData.Controls.ToggleInstructions
         }.All(keyboard.IsKeyUp);
 }

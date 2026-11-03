@@ -83,7 +83,7 @@ internal static class InstructionsVerification
 
             session.Battle.Player.Action = FighterAction.Hitstun;
             session.Battle.Player.StunFramesRemaining = 12;
-            Battle.TryStartMove(session.Battle.Cpu, MoveId.Heavy);
+            Battle.TryStartMove(session.Battle.Cpu, MoveIds.ShinsokuBattoGekihatsu);
             var snapshot = (
                 session.Battle.Frame, session.Battle.RemainingSeconds,
                 session.Battle.Player.X, session.Battle.Player.Health, session.Battle.Player.Meter,
@@ -131,8 +131,8 @@ internal static class InstructionsVerification
             Update();
             Update();
             Check(session.Battle.Frame == frame + 1 && session.Battle.Player.Grounded &&
-                  session.Battle.Player.CurrentMove == MoveId.None &&
-                  session.Battle.Player.History.Count == 0, "resume does not leak attack, jump or history");
+                  session.Battle.Player.CurrentMove == MoveIds.None &&
+                  session.Battle.Player.Commands.Count == 0, "resume does not leak attack, jump or history");
             FinishRound();
             Tap(GameData.Controls.Start);
             Check(session.InstructionsVisible, "re-enabled automatic help appears on next rematch");
@@ -175,10 +175,50 @@ internal static class InstructionsVerification
             {
                 GameData.Controls.Left, GameData.Controls.Right, GameData.Controls.Jump,
                 GameData.Controls.Down, GameData.Controls.Light, GameData.Controls.Heavy,
-                GameData.Controls.DebugSpecial, GameData.Controls.DebugOverlay,
+                GameData.Controls.Medium, GameData.Controls.Guard, GameData.Controls.DebugOverlay,
                 GameData.Controls.Start, GameData.Controls.Quit, GameData.Controls.ToggleInstructions
             };
             Check(!conflictKeys.Contains(GameData.Controls.Help), "help key does not conflict with existing controls");
+            Check(conflictKeys.Append(GameData.Controls.Help).Distinct().Count() == conflictKeys.Length + 1,
+                "all bindings are distinct including new medium and guard");
+            var inputSettings = new InstructionSettings(Path.Combine(directory, "controls.json"));
+            inputSettings.SetSkipInstructions(true);
+            var inputSession = new GameSession(inputSettings);
+            void Input(params Keys[] keys) => inputSession.Update(new KeyboardState(keys), default, true);
+            void Settle() { for (var i = 0; i < CombatTuning.ChordFrames; i++) Input(); }
+            Input(GameData.Controls.Light, GameData.Controls.Medium);
+            Settle();
+            Check(inputSession.Battle.Player.CurrentMove == MoveIds.KanzenKaihi,
+                "real keyboard weak plus medium starts evade, not single attacks");
+            inputSession.Battle.StartRound();
+            Input(GameData.Controls.Heavy);
+            Settle();
+            Check(inputSession.Battle.Player.CurrentMove == MoveIds.ShinsokuBattoGekihatsu &&
+                  inputSession.Battle.Player.SwordState == SwordState.Drawn, "original heavy key preserved");
+            inputSession.Battle.StartRound();
+            inputSession.Battle.Player.SwordState = SwordState.Drawn;
+            Input(GameData.Controls.Guard, Keys.Down);
+            Check(inputSession.Battle.Player.CurrentMove == MoveIds.SpecialGuard &&
+                  inputSession.Battle.Player.SwordState == SwordState.Sheathed, "guard key plus arrow down sheaths");
+            Input();
+            inputSession.Battle.StartRound();
+            inputSession.Battle.Player.SwordState = SwordState.Drawn;
+            Input(GameData.Controls.Medium, Keys.Up);
+            Settle();
+            Check(inputSession.Battle.Player.CurrentMove == MoveIds.Toppa &&
+                  inputSession.Battle.Player.Execution?.DirectionY == 1 && inputSession.Battle.Player.Grounded,
+                "keyboard up plus medium is directional thrust, not jump");
+            Input(GameData.Controls.Help);
+            var pausedFrame = inputSession.Battle.Frame;
+            Input();
+            Input(GameData.Controls.Start, GameData.Controls.Medium, GameData.Controls.Guard, Keys.Right);
+            for (var i = 0; i < 10; i++) Input(GameData.Controls.Medium, GameData.Controls.Guard, Keys.Right);
+            Check(!inputSession.InstructionsVisible && inputSession.Battle.Frame == pausedFrame,
+                "resume waits for new controls and arrows to be released");
+            Input();
+            Input();
+            Check(inputSession.Battle.Frame == pausedFrame + 1 && inputSession.Battle.Player.Commands.Count == 0,
+                "new controls do not leak through help or focus suppression");
         }
         finally
         {
