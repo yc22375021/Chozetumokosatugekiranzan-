@@ -34,7 +34,9 @@ internal readonly record struct KeyBindings(
     Keys DebugSpecial,
     Keys DebugOverlay,
     Keys Start,
-    Keys Quit);
+    Keys Quit,
+    Keys Help,
+    Keys ToggleInstructions);
 
 internal readonly record struct MoveDefinition(
     string Name,
@@ -106,7 +108,8 @@ internal static class GameData
         };
 
     public static readonly KeyBindings Controls = new(
-        Keys.A, Keys.D, Keys.W, Keys.S, Keys.J, Keys.K, Keys.F2, Keys.F3, Keys.Enter, Keys.Escape);
+        Keys.A, Keys.D, Keys.W, Keys.S, Keys.J, Keys.K, Keys.F2, Keys.F3, Keys.Enter, Keys.Escape,
+        Keys.F1, Keys.Space);
 
     public static readonly IReadOnlyDictionary<AnimationKind, SpriteAnimationDefinition> SpriteAnimations =
         new Dictionary<AnimationKind, SpriteAnimationDefinition>
