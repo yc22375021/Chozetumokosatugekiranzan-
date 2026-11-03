@@ -6,6 +6,8 @@ namespace Chozetumokosatugekiranzan;
 internal sealed class GameSession
 {
     public static readonly Rectangle CheckboxBounds = new(190, 342, 580, 42);
+    public static readonly Rectangle PreviousPageBounds = new(214, 276, 150, 40);
+    public static readonly Rectangle NextPageBounds = new(596, 276, 150, 40);
     public static readonly Rectangle ContinueBounds = new(300, 424, 360, 44);
 
     private KeyboardState _previousKeyboard;
@@ -26,6 +28,7 @@ internal sealed class GameSession
     public Battle Battle { get; } = new();
     public InstructionSettings Settings { get; }
     public bool InstructionsVisible { get; private set; }
+    public int InstructionPage { get; private set; }
     public bool DebugOverlay { get; private set; }
 
     public void Update(KeyboardState keyboard, MouseState mouse, bool active)
@@ -60,6 +63,16 @@ internal sealed class GameSession
                 (click && CheckboxBounds.Contains(mouse.Position)))
             {
                 Settings.SetSkipInstructions(!Settings.SkipInstructions);
+            }
+            else if (Pressed(keyboard, Keys.Left) ||
+                     (click && PreviousPageBounds.Contains(mouse.Position)))
+            {
+                InstructionPage = Math.Max(0, InstructionPage - 1);
+            }
+            else if (Pressed(keyboard, Keys.Right) ||
+                     (click && NextPageBounds.Contains(mouse.Position)))
+            {
+                InstructionPage = Math.Min(2, InstructionPage + 1);
             }
             else if (start || (click && ContinueBounds.Contains(mouse.Position)) ||
                      (help && Battle.Phase == RoundPhase.Fighting))

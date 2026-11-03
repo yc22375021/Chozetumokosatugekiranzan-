@@ -39,7 +39,7 @@ internal sealed class InstructionSettings
         }
         catch (Exception exception) when (IsSettingsError(exception))
         {
-            ReportError("SETTINGS UNREADABLE - SHOWING HELP", exception);
+            ReportError("設定を読み込めません。説明を表示します。", exception);
         }
     }
 
@@ -57,7 +57,7 @@ internal sealed class InstructionSettings
         }
         catch (Exception exception) when (IsSettingsError(exception))
         {
-            ReportError("SETTINGS NOT SAVED - CHANGE IS TEMPORARY", exception);
+            ReportError("設定を保存できません。変更は今回のみ有効です。", exception);
         }
     }
 
