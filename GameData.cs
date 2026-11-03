@@ -3,14 +3,6 @@ using Microsoft.Xna.Framework.Input;
 
 namespace Chozetumokosatugekiranzan;
 
-internal enum MoveId
-{
-    None,
-    Light,
-    Heavy,
-    Special
-}
-
 internal enum AnimationKind
 {
     Idle,
@@ -31,12 +23,13 @@ internal readonly record struct KeyBindings(
     Keys Down,
     Keys Light,
     Keys Heavy,
-    Keys DebugSpecial,
     Keys DebugOverlay,
     Keys Start,
     Keys Quit,
     Keys Help,
-    Keys ToggleInstructions);
+    Keys ToggleInstructions,
+    Keys Medium,
+    Keys Guard);
 
 internal readonly record struct MoveDefinition(
     string Name,
@@ -68,12 +61,9 @@ internal static class GameData
     public const float StageLeft = 64;
     public const float StageRight = 896;
     public const int FramesPerSecond = 60;
-    public const int CommandWindowFrames = 16;
-    public const int InputBufferCapacity = 24;
     public const int MatchTimeSeconds = 99;
     public const int MaximumHealth = 100;
     public const int MaximumMeter = 100;
-    public const int SpecialMeterCost = 35;
     public const float WalkSpeed = 3.4f;
     public const float JumpSpeed = 13.2f;
     public const float Gravity = 0.62f;
@@ -83,33 +73,12 @@ internal static class GameData
     public const int CrouchingHeight = 52;
     public const int CpuDecisionMinFrames = 12;
     public const int CpuDecisionMaxFrames = 20;
-    public const int CpuSpecialCooldownFrames = 20;
     public const int CpuApproachDistance = 112;
-    public const int CpuGuardOdds = 5;
-    public const int CpuSpecialOdds = 7;
-    public const int CpuHeavyOdds = 3;
     public const int JumpPrepFrames = 3;
 
-    public static readonly MoveDefinition Light = new(
-        "LIGHT", 9, 5, 3, 10, 66, 30, 14, 8, 20, 0, 14, 2);
-
-    public static readonly MoveDefinition Heavy = new(
-        "HEAVY", 15, 9, 4, 17, 82, 34, 22, 13, 34, 0, 18, 3);
-
-    public static readonly MoveDefinition Special = new(
-        "SPECIAL", 24, 11, 5, 23, 142, 42, 32, 19, 52, SpecialMeterCost, 20, 4);
-
-    public static readonly IReadOnlyDictionary<MoveId, MoveDefinition> Moves =
-        new Dictionary<MoveId, MoveDefinition>
-        {
-            [MoveId.Light] = Light,
-            [MoveId.Heavy] = Heavy,
-            [MoveId.Special] = Special
-        };
-
     public static readonly KeyBindings Controls = new(
-        Keys.A, Keys.D, Keys.W, Keys.S, Keys.J, Keys.K, Keys.F2, Keys.F3, Keys.Enter, Keys.Escape,
-        Keys.F1, Keys.Space);
+        Keys.A, Keys.D, Keys.W, Keys.S, Keys.J, Keys.K, Keys.F3, Keys.Enter, Keys.Escape,
+        Keys.F1, Keys.Space, Keys.U, Keys.L);
 
     public static readonly IReadOnlyDictionary<AnimationKind, SpriteAnimationDefinition> SpriteAnimations =
         new Dictionary<AnimationKind, SpriteAnimationDefinition>
