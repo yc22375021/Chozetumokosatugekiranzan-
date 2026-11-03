@@ -12,6 +12,7 @@ internal static class Program
         if (args.Contains("--self-test", StringComparer.Ordinal))
         {
             BattleVerification.Run();
+            InstructionsVerification.Run();
             return;
         }
 
@@ -30,14 +31,12 @@ internal sealed class FightingGame : Game
     private static readonly Dictionary<char, string[]> Glyphs = CreateGlyphs();
 
     private readonly GraphicsDeviceManager _graphics;
-    private readonly Battle _battle = new();
+    private readonly GameSession _session = new(new InstructionSettings());
+    private Battle _battle => _session.Battle;
+    private bool _debug => _session.DebugOverlay;
     private readonly Dictionary<string, Texture2D> _sprites = new(StringComparer.OrdinalIgnoreCase);
     private SpriteBatch _spriteBatch = null!;
     private Texture2D _pixel = null!;
-    private KeyboardState _previousKeyboard;
-    private bool _wasActive = true;
-    private bool _suppressUntilNeutral;
-    private bool _debug;
 
     public FightingGame()
     {
@@ -114,65 +113,13 @@ internal sealed class FightingGame : Game
 
     protected override void Update(GameTime gameTime)
     {
-        if (!IsActive)
-        {
-            if (_wasActive)
-            {
-                _battle.ClearTransientInput();
-            }
-
-            _wasActive = false;
-            _previousKeyboard = default;
-            _suppressUntilNeutral = true;
-            base.Update(gameTime);
-            return;
-        }
-
         var current = Keyboard.GetState();
-        if (!_wasActive)
-        {
-            _wasActive = true;
-            _battle.ClearTransientInput();
-            _previousKeyboard = current;
-            _suppressUntilNeutral = true;
-            base.Update(gameTime);
-            return;
-        }
-
-        if (current.IsKeyDown(GameData.Controls.Quit))
+        if (IsActive && current.IsKeyDown(GameData.Controls.Quit))
         {
             Exit();
         }
 
-        if (_suppressUntilNeutral)
-        {
-            _previousKeyboard = current;
-            if (ControlsReleased(current))
-            {
-                _suppressUntilNeutral = false;
-            }
-
-            base.Update(gameTime);
-            return;
-        }
-
-        if (Pressed(current, GameData.Controls.DebugOverlay))
-        {
-            _debug = !_debug;
-        }
-
-        var horizontal = (current.IsKeyDown(GameData.Controls.Right) ? 1 : 0) -
-                         (current.IsKeyDown(GameData.Controls.Left) ? 1 : 0);
-        var input = new FrameInput(
-            Horizontal: horizontal,
-            Down: current.IsKeyDown(GameData.Controls.Down),
-            JumpPressed: Pressed(current, GameData.Controls.Jump),
-            LightPressed: Pressed(current, GameData.Controls.Light),
-            HeavyPressed: Pressed(current, GameData.Controls.Heavy),
-            DebugSpecialPressed: Pressed(current, GameData.Controls.DebugSpecial),
-            StartPressed: Pressed(current, GameData.Controls.Start));
-        _battle.Tick(input);
-        _previousKeyboard = current;
+        _session.Update(current, Mouse.GetState(), IsActive);
         base.Update(gameTime);
     }
 
@@ -218,8 +165,19 @@ internal sealed class FightingGame : Game
                     RoundResult.CpuWin => CpuColor,
                     _ => Color.White
                 });
-                DrawCentered("ENTER REMATCH", 292, 2, Color.White);
+                DrawCentered($"{GameData.Controls.Start} REMATCH", 292, 2, Color.White);
                 break;
+        }
+
+        if (_session.InstructionsVisible)
+        {
+            DrawInstructions();
+        }
+
+        if (_session.Settings.Error is { } settingsError)
+        {
+            DrawRect(new Rectangle(0, 512, GameData.ScreenWidth, 28), Background);
+            DrawCentered(settingsError, 522, 1, Color.Orange);
         }
 
         if (!IsActive)
@@ -244,22 +202,44 @@ internal sealed class FightingGame : Game
         base.UnloadContent();
     }
 
-    private bool Pressed(KeyboardState current, Keys key) =>
-        current.IsKeyDown(key) && _previousKeyboard.IsKeyUp(key);
+    private void DrawInstructions()
+    {
+        DrawRect(new Rectangle(0, 0, GameData.ScreenWidth, GameData.ScreenHeight), new Color(5, 8, 18, 245));
+        DrawCentered("HOW TO PLAY", 38, 3, Color.White);
+        DrawCentered(_battle.Phase == RoundPhase.Fighting ? "BATTLE PAUSED" : "BEFORE BATTLE", 78, 2, PlayerColor);
+        DrawCentered($"{GameData.Controls.Left} / {GameData.Controls.Right} MOVE - HOLD BACK ON GROUND TO GUARD", 120, 2, Color.White);
+        DrawCentered($"{GameData.Controls.Jump} JUMP / {GameData.Controls.Down} CROUCH", 152, 2, Color.White);
+        DrawCentered($"{GameData.Controls.Light} LIGHT / {GameData.Controls.Heavy} HEAVY", 184, 2, Color.White);
+        DrawCentered($"SPECIAL: DOWN - DOWN-FORWARD - FORWARD + {GameData.Controls.Light}", 220, 1, Color.LightGray);
+        DrawCentered($"FACING RIGHT: {GameData.Controls.Down} - {GameData.Controls.Down}+{GameData.Controls.Right} - " +
+                     $"{GameData.Controls.Right}+{GameData.Controls.Light}", 240, 1, Color.LightGray);
+        DrawCentered($"FACING LEFT: {GameData.Controls.Down} - {GameData.Controls.Down}+{GameData.Controls.Left} - " +
+                     $"{GameData.Controls.Left}+{GameData.Controls.Light}", 260, 1, Color.LightGray);
+        DrawCentered($"NEEDS {GameData.Special.MeterCost} METER - COST {GameData.Special.MeterCost}", 282, 1, MeterColor);
+        DrawCentered($"GROUND ONLY - NOT ATTACKING OR STUNNED - WITHIN {GameData.CommandWindowFrames} FRAMES",
+            302, 1, Color.LightGray);
+        DrawCentered($"{GameData.Controls.Help} HELP / PAUSE - {GameData.Controls.Quit} QUIT - " +
+                     $"{GameData.Controls.DebugSpecial} DEBUG SPECIAL / {GameData.Controls.DebugOverlay} DEBUG VIEW",
+            322, 1, Color.LightGray);
 
-    private static bool ControlsReleased(KeyboardState state) =>
-        new[]
+        var bounds = GameSession.CheckboxBounds;
+        DrawOutline(new Rectangle(bounds.X + 8, bounds.Y + 8, 26, 26), Color.White);
+        if (_session.Settings.SkipInstructions)
         {
-            GameData.Controls.Left,
-            GameData.Controls.Right,
-            GameData.Controls.Jump,
-            GameData.Controls.Down,
-            GameData.Controls.Light,
-            GameData.Controls.Heavy,
-            GameData.Controls.DebugSpecial,
-            GameData.Controls.Start
+            DrawRect(new Rectangle(bounds.X + 14, bounds.Y + 14, 14, 14), PlayerColor);
         }
-            .All(key => state.IsKeyUp(key));
+
+        DrawText("DO NOT SHOW THIS AGAIN", bounds.X + 48, bounds.Y + 5, 2, Color.White);
+        DrawText(_session.Settings.SkipInstructions ? "ON - AUTO HELP OFF" : "OFF - AUTO HELP ON",
+            bounds.X + 48, bounds.Y + 26, 1, PlayerColor);
+        DrawCentered($"{GameData.Controls.ToggleInstructions} OR CLICK CHECKBOX TO TOGGLE", 396, 1, Color.LightGray);
+        DrawOutline(GameSession.ContinueBounds, PlayerColor);
+        DrawCentered(_battle.Phase == RoundPhase.Fighting
+                ? $"{GameData.Controls.Start} / CLICK RESUME"
+                : $"{GameData.Controls.Start} / CLICK START BATTLE",
+            440, 2, Color.White);
+        DrawCentered($"{GameData.Controls.Help} CAN ALWAYS REOPEN HELP DURING BATTLE", 486, 1, Color.LightGray);
+    }
 
     private string ResultText() => _battle.Result switch
     {
@@ -292,6 +272,7 @@ internal sealed class FightingGame : Game
             DrawText("CPU HP", 840, 88, 1, Color.LightGray);
             DrawText("METER", 42, 80, 1, Color.LightGray);
             DrawText("METER", 840, 80, 1, Color.LightGray);
+            DrawCentered($"{GameData.Controls.Help} HELP / PAUSE", 110, 1, Color.LightGray);
         }
     }
 
@@ -538,6 +519,7 @@ internal sealed class FightingGame : Game
         [':'] = ["000", "010", "010", "000", "010", "010", "000"],
         ['-'] = ["000", "000", "000", "11111", "000", "000", "000"],
         ['/'] = ["00001", "00010", "00010", "00100", "01000", "01000", "10000"],
-        ['!'] = ["010", "010", "010", "010", "010", "000", "010"]
+        ['!'] = ["010", "010", "010", "010", "010", "000", "010"],
+        ['+'] = ["00000", "00100", "00100", "11111", "00100", "00100", "00000"]
     };
 }
