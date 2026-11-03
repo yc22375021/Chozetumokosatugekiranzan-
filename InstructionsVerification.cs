@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using Microsoft.Xna.Framework.Input;
 
 namespace Chozetumokosatugekiranzan;
@@ -52,6 +53,56 @@ internal static class InstructionsVerification
             Check(session.Battle.Frame == 0 && session.Battle.Phase == RoundPhase.Title,
                 "startup instructions do not advance battle or accept fighting input");
             Update();
+            Update(Keys.Right);
+            Check(session.InstructionPage == 1 && session.Battle.Frame == 0,
+                "right arrow advances instruction pages without starting the battle");
+            Update();
+            Update(Keys.Left);
+            Check(session.InstructionPage == 0, "left arrow returns to the previous instruction page");
+            Update();
+            var nextPage = new MouseState(GameSession.NextPageBounds.Center.X,
+                GameSession.NextPageBounds.Center.Y, 0,
+                ButtonState.Pressed, ButtonState.Released, ButtonState.Released,
+                ButtonState.Released, ButtonState.Released);
+            session.Update(default, nextPage, true);
+            Check(session.InstructionPage == 1, "next-page button advances instruction pages");
+            session.Update(default, default, true);
+            var previousPage = new MouseState(GameSession.PreviousPageBounds.Center.X,
+                GameSession.PreviousPageBounds.Center.Y, 0,
+                ButtonState.Pressed, ButtonState.Released, ButtonState.Released,
+                ButtonState.Released, ButtonState.Released);
+            session.Update(default, previousPage, true);
+            Check(session.InstructionPage == 0, "previous-page button returns to the basic controls");
+            session.Update(default, default, true);
+
+            var instructionText = Enumerable.Range(0, 3).SelectMany(page =>
+                FightingGame.InstructionLines(page).Append(FightingGame.InstructionSectionTitle(page)));
+            Check(instructionText.SelectMany(text => text)
+                    .All(character => char.IsAscii(character) ||
+                                      JapaneseFont.GlyphCharacters.Contains(character)),
+                "all instruction text characters exist in the Japanese font atlas");
+            Check(JapaneseFont.GlyphCharacters.Distinct().Count() == JapaneseFont.GlyphCharacters.Length,
+                "Japanese font atlas glyph table has no duplicate characters");
+            Check(Enumerable.Range(0, 3).SelectMany(FightingGame.InstructionLines)
+                    .All(line => JapaneseFont.MeasureTextWidth(line, 1) <= GameData.ScreenWidth - 176),
+                "all instruction lines fit within the page content width");
+            Check(119 + (FightingGame.InstructionLines(0).Length - 1) * 23 + JapaneseFont.CellSize <=
+                  GameSession.PreviousPageBounds.Y &&
+                  GameSession.NextPageBounds.Bottom < GameSession.CheckboxBounds.Y &&
+                  GameSession.CheckboxBounds.Bottom < 394 &&
+                  394 + JapaneseFont.CellSize <= GameSession.ContinueBounds.Y &&
+                  GameSession.ContinueBounds.Bottom < 482 + JapaneseFont.CellSize,
+                "instruction text, page buttons, checkbox and start button do not overlap");
+            var atlasPath = Path.Combine(AppContext.BaseDirectory, "Assets", "JapaneseFontAtlas.png");
+            var atlasBytes = File.ReadAllBytes(atlasPath);
+            Check(atlasBytes.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) &&
+                  BinaryPrimitives.ReadInt32BigEndian(atlasBytes.AsSpan(16, 4)) == JapaneseFont.Columns * JapaneseFont.CellSize &&
+                  BinaryPrimitives.ReadInt32BigEndian(atlasBytes.AsSpan(20, 4)) ==
+                  (JapaneseFont.GlyphCharacters.Length + JapaneseFont.Columns - 1) /
+                  JapaneseFont.Columns * JapaneseFont.CellSize,
+                "Japanese font atlas dimensions match its complete glyph table");
+            Check(File.Exists(Path.Combine(AppContext.BaseDirectory, "Assets", "NotoSansCJK-OFL.txt")),
+                "Japanese font redistribution license is included in output assets");
             Tap(GameData.Controls.Start);
             Check(!session.InstructionsVisible && session.Battle.Phase == RoundPhase.Fighting,
                 "separate start begins battle");

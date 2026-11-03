@@ -64,16 +64,6 @@ internal sealed class GameSession
             {
                 Settings.SetSkipInstructions(!Settings.SkipInstructions);
             }
-            else if (Pressed(keyboard, Keys.Left) ||
-                     (click && PreviousPageBounds.Contains(mouse.Position)))
-            {
-                InstructionPage = Math.Max(0, InstructionPage - 1);
-            }
-            else if (Pressed(keyboard, Keys.Right) ||
-                     (click && NextPageBounds.Contains(mouse.Position)))
-            {
-                InstructionPage = Math.Min(2, InstructionPage + 1);
-            }
             else if (start || (click && ContinueBounds.Contains(mouse.Position)) ||
                      (help && Battle.Phase == RoundPhase.Fighting))
             {
@@ -84,6 +74,16 @@ internal sealed class GameSession
                 }
 
                 SuppressInput();
+            }
+            else if (Pressed(keyboard, Keys.Left) ||
+                     (click && PreviousPageBounds.Contains(mouse.Position)))
+            {
+                InstructionPage = Math.Max(0, InstructionPage - 1);
+            }
+            else if (Pressed(keyboard, Keys.Right) ||
+                     (click && NextPageBounds.Contains(mouse.Position)))
+            {
+                InstructionPage = Math.Min(2, InstructionPage + 1);
             }
         }
         else if ((help && Battle.Phase == RoundPhase.Fighting) ||

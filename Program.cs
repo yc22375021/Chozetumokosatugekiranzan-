@@ -234,7 +234,7 @@ internal sealed class FightingGame : Game
         DrawOutline(GameSession.PreviousPageBounds, Color.LightGray);
         DrawCenteredAt("前へ", GameSession.PreviousPageBounds.Center.X, 287, 1,
             _session.InstructionPage == 0 ? Color.Gray : Color.White);
-        DrawCentered($"ページ {_session.InstructionPage + 1} / 3", 289, 1, Color.LightGray);
+        DrawCentered($"← / →　ページ {_session.InstructionPage + 1} / 3", 289, 1, Color.LightGray);
         DrawOutline(GameSession.NextPageBounds, Color.LightGray);
         DrawCenteredAt("次へ", GameSession.NextPageBounds.Center.X, 287, 1,
             _session.InstructionPage == 2 ? Color.Gray : Color.White);
@@ -247,13 +247,13 @@ internal sealed class FightingGame : Game
         }
 
         DrawText("次回から表示しない", bounds.X + 48, bounds.Y + 5, 1, Color.White);
-        DrawText(_session.Settings.SkipInstructions ? "ON：次回から省略" : "OFF：次回も表示",
+        DrawText(_session.Settings.SkipInstructions ? "設定：次回から省略" : "設定：次回も表示",
             bounds.X + 48, bounds.Y + 25, 1, PlayerColor);
         DrawCentered($"{GameData.Controls.ToggleInstructions} またはチェック欄クリック：切替",
             394, 1, Color.LightGray);
         DrawOutline(GameSession.ContinueBounds, PlayerColor);
         DrawCentered(_battle.Phase == RoundPhase.Fighting
-                ? $"{GameData.Controls.Start}：再開"
+                ? $"{GameData.Controls.Start} / クリック：再開"
                 : $"{GameData.Controls.Start} / クリック：対戦開始",
             436, 1, Color.White);
         DrawCentered($"{GameData.Controls.Help}：説明を閉じる・対戦中は一時停止　" +
@@ -554,7 +554,7 @@ internal sealed class FightingGame : Game
 
     private void DrawCenteredAt(string text, int centerX, int y, int scale, Color color)
     {
-        var width = Math.Max(0, MeasureTextWidth(text, scale) - scale);
+        var width = Math.Max(0, JapaneseFont.MeasureTextWidth(text, scale) - scale);
         DrawText(text, centerX - width / 2, y, scale, color);
     }
 
@@ -588,20 +588,18 @@ internal sealed class FightingGame : Game
             }
             else
             {
-                cursor += 12 * scale;
+                if (!char.IsAscii(character))
+                {
+                    DrawOutline(new Rectangle(cursor, y,
+                        JapaneseFont.CellSize * scale, JapaneseFont.CellSize * scale), Color.Magenta);
+                    cursor += JapaneseFont.CellSize * scale;
+                }
+                else
+                {
+                    cursor += 12 * scale;
+                }
             }
         }
-    }
-
-    private int MeasureTextWidth(string text, int scale)
-    {
-        var width = 0;
-        foreach (var character in text)
-        {
-            width += (_japaneseGlyphs.ContainsKey(character) ? JapaneseFont.CellSize : 12) * scale;
-        }
-
-        return width;
     }
 
     private static Rectangle ToRectangle(RectF box) => new(
