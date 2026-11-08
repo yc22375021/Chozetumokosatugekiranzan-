@@ -13,11 +13,23 @@ internal static class Program
         {
             BattleVerification.Run();
             InstructionsVerification.Run();
+            CharacterImagesVerification.Run();
             return;
         }
 
-        using var game = new FightingGame();
-        game.Run();
+        System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
+        System.Windows.Forms.Application.EnableVisualStyles();
+        var images = new CharacterImageStore();
+        var selectedId = 1;
+        while (true)
+        {
+            using var selection = new CharacterSelectForm(images, selectedId);
+            if (selection.ShowDialog() != System.Windows.Forms.DialogResult.OK) break;
+            selectedId = selection.Selected.Id;
+            using var game = new FightingGame(images, selectedId);
+            game.Run();
+            if (!game.ReturnToSelection) break;
+        }
     }
 }
 
@@ -40,8 +52,16 @@ internal sealed class FightingGame : Game
     private Texture2D _pixel = null!;
     private Texture2D _japaneseGlyphAtlas = null!;
 
-    public FightingGame()
+    private readonly CharacterImageStore _characterImages;
+    private readonly int _characterId;
+    private Texture2D? _characterIcon;
+    private Texture2D? _characterBattle;
+    public bool ReturnToSelection { get; private set; }
+
+    public FightingGame(CharacterImageStore images, int characterId)
     {
+        _characterImages = images;
+        _characterId = characterId;
         _graphics = new GraphicsDeviceManager(this)
         {
             PreferredBackBufferWidth = GameData.ScreenWidth,
@@ -65,6 +85,9 @@ internal sealed class FightingGame : Game
         _spriteBatch = new SpriteBatch(GraphicsDevice);
         _pixel = new Texture2D(GraphicsDevice, 1, 1);
         _pixel.SetData([Color.White]);
+
+        _characterIcon = LoadCharacterTexture(CharacterImage.Icon);
+        _characterBattle = LoadCharacterTexture(CharacterImage.Battle);
 
         var assetsDirectory = Path.Combine(AppContext.BaseDirectory, "Assets");
         using (var stream = File.OpenRead(Path.Combine(assetsDirectory, "JapaneseFontAtlas.png")))
@@ -135,6 +158,13 @@ internal sealed class FightingGame : Game
             Exit();
         }
 
+        // Return only outside active combat. A new session clears all held/transient inputs.
+        if (IsActive && _battle.Phase != RoundPhase.Fighting && current.IsKeyDown(Keys.F2))
+        {
+            ReturnToSelection = true;
+            Exit();
+            return;
+        }
         _session.Update(current, Mouse.GetState(), IsActive);
         base.Update(gameTime);
     }
@@ -189,6 +219,9 @@ internal sealed class FightingGame : Game
             DrawInstructions();
         }
 
+        if (_battle.Phase != RoundPhase.Fighting)
+            DrawCentered("F2 CHARACTER SELECT", 504, 1, PlayerColor);
+
         if (_session.Settings.Error is { } settingsError)
         {
             DrawRect(new Rectangle(0, 512, GameData.ScreenWidth, 28), Background);
@@ -212,10 +245,48 @@ internal sealed class FightingGame : Game
             texture.Dispose();
         }
 
+        _characterIcon?.Dispose();
+        _characterBattle?.Dispose();
         _pixel.Dispose();
         _japaneseGlyphAtlas.Dispose();
         _spriteBatch.Dispose();
         base.UnloadContent();
+    }
+
+    private Texture2D? LoadCharacterTexture(CharacterImage role)
+    {
+        Texture2D? texture = null;
+        try
+        {
+            var path = _characterImages.PathFor(_characterId, role);
+            if (!File.Exists(path)) return null;
+            using var stream = File.OpenRead(path);
+            texture = Texture2D.FromStream(GraphicsDevice, stream);
+            if (texture.Width > 4096 || texture.Height > 4096 || (long)texture.Width * texture.Height > 16_000_000)
+                throw new InvalidDataException("Character image is too large.");
+            // FromStream loads straight alpha; SpriteBatch's default AlphaBlend needs premultiplied alpha.
+            var pixels = new Color[texture.Width * texture.Height];
+            texture.GetData(pixels);
+            for (var i = 0; i < pixels.Length; i++)
+                pixels[i] = Color.FromNonPremultiplied(pixels[i].R, pixels[i].G, pixels[i].B, pixels[i].A);
+            texture.SetData(pixels);
+            return texture;
+        }
+        catch (Exception e) when (CharacterImageStore.IsImageError(e) || e is InvalidOperationException)
+        {
+            texture?.Dispose();
+            Console.Error.WriteLine($"Character image fallback ({role}): {e.Message}");
+            return null;
+        }
+    }
+
+    private void DrawImageFit(Texture2D image, Rectangle bounds)
+    {
+        var scale = Math.Min(bounds.Width / (float)image.Width, bounds.Height / (float)image.Height);
+        var width = Math.Max(1, (int)(image.Width * scale));
+        var height = Math.Max(1, (int)(image.Height * scale));
+        _spriteBatch.Draw(image, new Rectangle(bounds.X + (bounds.Width - width) / 2,
+            bounds.Y + (bounds.Height - height) / 2, width, height), Color.White);
     }
 
     private void DrawInstructions()
@@ -326,6 +397,11 @@ internal sealed class FightingGame : Game
 
     private void DrawHud()
     {
+        if (_characterIcon is { } icon)
+        {
+            DrawImageFit(icon, new Rectangle(4, 12, 32, 32));
+            DrawImageFit(icon, new Rectangle(924, 12, 32, 32));
+        }
         DrawText("1P", 42, 18, 1, PlayerColor);
         DrawText("CPU", 840, 18, 1, CpuColor);
         DrawBar(42, 42, 390, 22, _battle.Player.Health, GameData.MaximumHealth, PlayerColor);
@@ -371,7 +447,16 @@ internal sealed class FightingGame : Game
             _ when !fighter.Grounded => AnimationKind.JumpFall,
             _ => AnimationKind.Idle
         };
-        if (!TryDrawSprite(fighter, kind))
+        if (_characterBattle is { } still)
+        {
+            var height = fighter.Crouching ? 104 : 156;
+            var width = Math.Max(1, (int)(still.Width * (height / (float)still.Height)));
+            _spriteBatch.Draw(still, new Rectangle((int)fighter.X - width / 2,
+                (int)(GameData.GroundY - fighter.Altitude) - height, width, height), null,
+                fighter.Action == FighterAction.Hitstun ? Color.LightPink : Color.White,
+                0, Vector2.Zero, fighter.Facing < 0 ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0);
+        }
+        else if (!TryDrawSprite(fighter, kind))
         {
             DrawFallbackFighter(fighter);
         }
