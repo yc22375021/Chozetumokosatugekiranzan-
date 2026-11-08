@@ -13,6 +13,7 @@
   <ItemGroup>
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="[3.8.6]" />
     <Content Include="Assets/**/*.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets/**/*.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

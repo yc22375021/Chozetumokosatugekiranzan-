@@ -35,8 +35,10 @@ internal sealed class FightingGame : Game
     private Battle _battle => _session.Battle;
     private bool _debug => _session.DebugOverlay;
     private readonly Dictionary<string, Texture2D> _sprites = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<char, Rectangle> _japaneseGlyphs = new();
     private SpriteBatch _spriteBatch = null!;
     private Texture2D _pixel = null!;
+    private Texture2D _japaneseGlyphAtlas = null!;
 
     public FightingGame()
     {
@@ -50,7 +52,7 @@ internal sealed class FightingGame : Game
         IsMouseVisible = true;
         IsFixedTimeStep = true;
         TargetElapsedTime = TimeSpan.FromSeconds(1d / GameData.FramesPerSecond);
-        Window.Title = "Fighter - CPU Battle";
+        Window.Title = "剣戟対戦";
     }
 
     protected override void Initialize()
@@ -65,6 +67,20 @@ internal sealed class FightingGame : Game
         _pixel.SetData([Color.White]);
 
         var assetsDirectory = Path.Combine(AppContext.BaseDirectory, "Assets");
+        using (var stream = File.OpenRead(Path.Combine(assetsDirectory, "JapaneseFontAtlas.png")))
+        {
+            _japaneseGlyphAtlas = Texture2D.FromStream(GraphicsDevice, stream);
+        }
+
+        for (var index = 0; index < JapaneseFont.GlyphCharacters.Length; index++)
+        {
+            _japaneseGlyphs.Add(
+                JapaneseFont.GlyphCharacters[index],
+                new Rectangle(index % JapaneseFont.Columns * JapaneseFont.CellSize,
+                    index / JapaneseFont.Columns * JapaneseFont.CellSize,
+                    JapaneseFont.CellSize, JapaneseFont.CellSize));
+        }
+
         foreach (var group in GameData.SpriteAnimations.Values
                      .GroupBy(item => item.FileName, StringComparer.OrdinalIgnoreCase))
         {
@@ -143,29 +159,28 @@ internal sealed class FightingGame : Game
         switch (_battle.Phase)
         {
             case RoundPhase.Title:
-                DrawCentered("FIGHTER", 192, 4, Color.White);
-                DrawCentered("CPU BATTLE", 246, 2, PlayerColor);
-                DrawCentered($"{GameData.Controls.Start} START", 320, 2, Color.White);
-                DrawCentered($"{GameData.Controls.Left} {GameData.Controls.Right} MOVE  " +
-                             $"{GameData.Controls.Jump} JUMP  {GameData.Controls.Down} CROUCH",
+                DrawCentered("剣戟対戦", 185, 3, Color.White);
+                DrawCentered("CPU対戦", 246, 2, PlayerColor);
+                DrawCentered($"{GameData.Controls.Start}：開始", 320, 2, Color.White);
+                DrawCentered($"{GameData.Controls.Left} / {GameData.Controls.Right}・← / →：移動　" +
+                             $"{GameData.Controls.Jump} / ↑：ジャンプ　{GameData.Controls.Down} / ↓：しゃがみ",
                     366, 1, Color.LightGray);
-                DrawCentered($"{GameData.Controls.Light} LIGHT  {GameData.Controls.Medium} MEDIUM  " +
-                             $"{GameData.Controls.Heavy} HEAVY  {GameData.Controls.Guard} GUARD",
-                    390, 1, Color.LightGray);
-                DrawCentered($"{GameData.Controls.Guard} + DOWN SPECIAL GUARD / SHEATHE",
-                    414, 1, Color.LightGray);
-                DrawCentered($"{GameData.Controls.Help} HOW TO PLAY  {GameData.Controls.DebugOverlay} DEBUG VIEW",
-                    438, 1, Color.LightGray);
+                DrawCentered($"{GameData.Controls.Light}：弱　{GameData.Controls.Medium}：中　" +
+                             $"{GameData.Controls.Heavy}：強　{GameData.Controls.Guard}：ガード",
+                    392, 1, Color.LightGray);
+                DrawCentered($"{GameData.Controls.Guard} + ↓：特殊ガード・納刀", 418, 1, Color.LightGray);
+                DrawCentered($"{GameData.Controls.Help}：操作説明・一時停止　{GameData.Controls.DebugOverlay}：情報表示",
+                    444, 1, Color.LightGray);
                 break;
             case RoundPhase.Result:
                 DrawRect(new Rectangle(220, 188, 520, 160), new Color(5, 8, 18, 220));
-                DrawCentered(ResultText(), 220, 4, _battle.Result switch
+                DrawCentered(ResultText(), 220, 2, _battle.Result switch
                 {
                     RoundResult.PlayerWin => PlayerColor,
                     RoundResult.CpuWin => CpuColor,
                     _ => Color.White
                 });
-                DrawCentered($"{GameData.Controls.Start} REMATCH", 292, 2, Color.White);
+                DrawCentered($"{GameData.Controls.Start}：再戦", 292, 1, Color.White);
                 break;
         }
 
@@ -183,7 +198,7 @@ internal sealed class FightingGame : Game
         if (!IsActive)
         {
             DrawRect(new Rectangle(315, 220, 330, 80), new Color(5, 8, 18, 220));
-            DrawCentered("PAUSED", 250, 3, Color.White);
+            DrawCentered("一時停止", 246, 1, Color.White);
         }
 
         _spriteBatch.End();
@@ -198,55 +213,31 @@ internal sealed class FightingGame : Game
         }
 
         _pixel.Dispose();
+        _japaneseGlyphAtlas.Dispose();
         _spriteBatch.Dispose();
         base.UnloadContent();
     }
 
     private void DrawInstructions()
     {
-        DrawRect(new Rectangle(0, 0, GameData.ScreenWidth, GameData.ScreenHeight), new Color(5, 8, 18, 245));
-        DrawCentered("HOW TO PLAY", 20, 3, Color.White);
-        DrawCentered(_battle.Phase == RoundPhase.Fighting ? "BATTLE PAUSED" : "BEFORE BATTLE", 56, 2, PlayerColor);
-        DrawCentered($"ARROWS / {GameData.Controls.Jump}{GameData.Controls.Left}{GameData.Controls.Down}{GameData.Controls.Right} MOVE - " +
-                     $"{GameData.Controls.Jump} / UP JUMP - " +
-                     $"{GameData.Controls.Down} / DOWN CROUCH", 88, 1, Color.White);
-        DrawCentered($"{GameData.Controls.Light} LIGHT / {GameData.Controls.Medium} MEDIUM / " +
-                     $"{GameData.Controls.Heavy} HEAVY / {GameData.Controls.Guard} GUARD - BACK GUARD ALSO AVAILABLE",
-            106, 1, Color.White);
-        DrawText("SHEATHED - ROUND START", 30, 134, 1, PlayerColor);
-        DrawText("DRAWN - PERSISTS UNTIL SHEATHED", 495, 134, 1, CpuColor);
-        var light = GameData.Controls.Light;
-        var medium = GameData.Controls.Medium;
-        var heavy = GameData.Controls.Heavy;
-        string[] sheathed =
-        [
-            $"{light} HAND CHOP - FREE CANCEL EVEN ON WHIFF",
-            $"{medium} SCABBARD THRUST - {medium} SPIN - {medium} THRUST / SHEATHE",
-            $"{heavy} QUICK DRAW - DRAWS AT START",
-            $"{light}+{medium} PERFECT EVADE - ATTACK CANCEL ON SUCCESS ONLY",
-            $"{light}+{heavy} DEEP BREATH - 3 SECOND BUFF",
-            $"{light} THEN {medium} ROTATING SWORD DANCE - {medium} UP TO 6 SPINS"
-        ];
-        string[] drawn =
-        [
-            $"{light} SLASH - 3 EXTRA {light} PRESSES / 4 HITS TOTAL",
-            $"{medium} DIRECTIONAL THRUST - NEUTRAL: FACING",
-            $"{heavy} FLASH SWORD - UNIMPLEMENTED",
-            $"{light}+{medium} AIR THRUST - UNIMPLEMENTED",
-            $"{light}+{heavy} BLADE RUSH - TIP COUNTER EFFECT UNDEFINED",
-            $"{light} THEN {medium} ARMORED SLASH - SUPER ARMOR"
-        ];
-        for (var index = 0; index < sheathed.Length; index++)
+        DrawRect(new Rectangle(0, 0, GameData.ScreenWidth, GameData.ScreenHeight), new Color(5, 8, 18));
+        DrawCentered("操作説明", 18, 2, Color.White);
+        DrawCentered(_battle.Phase == RoundPhase.Fighting ? "対戦中：一時停止中" : "対戦開始前", 58, 1, PlayerColor);
+        DrawCentered(InstructionSectionTitle(_session.InstructionPage), 88, 1, MeterColor);
+
+        var lines = InstructionLines(_session.InstructionPage);
+        for (var index = 0; index < lines.Length; index++)
         {
-            DrawText(sheathed[index], 30, 156 + index * 18, 1, Color.White);
-            DrawText(drawn[index], 495, 156 + index * 18, 1, Color.White);
+            DrawText(lines[index], 88, 119 + index * 23, 1, Color.White);
         }
-        DrawCentered($"{GameData.Controls.Guard}+DOWN SPECIAL GUARD / SHEATHE ON INPUT - GROUND / IDLE OR CHOP CANCEL",
-            276, 1, MeterColor);
-        DrawCentered($"{medium}+{heavy} UNDEFINED IN BOTH STATES - NO SINGLE ATTACK FALLBACK", 294, 1, Color.LightGray);
-        DrawCentered($"PLUS = TOGETHER WITHIN {CombatTuning.ChordFrames}F - THEN = AFTER FIRST MOVE STARTS - BUFFER {CombatTuning.BufferFrames}F",
-            310, 1, Color.LightGray);
-        DrawCentered("PROTOTYPE TIMINGS / DAMAGE / DEFENSE - EVADE ASSIST OFF BY DEFAULT", 326, 1, Color.LightGray);
+
+        DrawOutline(GameSession.PreviousPageBounds, Color.LightGray);
+        DrawCenteredAt("前へ", GameSession.PreviousPageBounds.Center.X, 287, 1,
+            _session.InstructionPage == 0 ? Color.Gray : Color.White);
+        DrawCentered($"← / →　ページ {_session.InstructionPage + 1} / 3", 289, 1, Color.LightGray);
+        DrawOutline(GameSession.NextPageBounds, Color.LightGray);
+        DrawCenteredAt("次へ", GameSession.NextPageBounds.Center.X, 287, 1,
+            _session.InstructionPage == 2 ? Color.Gray : Color.White);
 
         var bounds = GameSession.CheckboxBounds;
         DrawOutline(new Rectangle(bounds.X + 8, bounds.Y + 8, 26, 26), Color.White);
@@ -255,24 +246,73 @@ internal sealed class FightingGame : Game
             DrawRect(new Rectangle(bounds.X + 14, bounds.Y + 14, 14, 14), PlayerColor);
         }
 
-        DrawText("DO NOT SHOW THIS AGAIN", bounds.X + 48, bounds.Y + 5, 2, Color.White);
-        DrawText(_session.Settings.SkipInstructions ? "ON - AUTO HELP OFF" : "OFF - AUTO HELP ON",
-            bounds.X + 48, bounds.Y + 26, 1, PlayerColor);
-        DrawCentered($"{GameData.Controls.ToggleInstructions} OR CLICK CHECKBOX TO TOGGLE", 396, 1, Color.LightGray);
+        DrawText("次回から表示しない", bounds.X + 48, bounds.Y + 5, 1, Color.White);
+        DrawText(_session.Settings.SkipInstructions ? "設定：次回から省略" : "設定：次回も表示",
+            bounds.X + 48, bounds.Y + 25, 1, PlayerColor);
+        DrawCentered($"{GameData.Controls.ToggleInstructions} またはチェック欄クリック：切替",
+            394, 1, Color.LightGray);
         DrawOutline(GameSession.ContinueBounds, PlayerColor);
         DrawCentered(_battle.Phase == RoundPhase.Fighting
-                ? $"{GameData.Controls.Start} / CLICK RESUME"
-                : $"{GameData.Controls.Start} / CLICK START BATTLE",
-            440, 2, Color.White);
-        DrawCentered($"{GameData.Controls.Help} HELP / PAUSE - {GameData.Controls.DebugOverlay} DEBUG VIEW - " +
-                     $"{GameData.Controls.Quit} QUIT", 486, 1, Color.LightGray);
+                ? $"{GameData.Controls.Start} / クリック：再開"
+                : $"{GameData.Controls.Start} / クリック：対戦開始",
+            436, 1, Color.White);
+        DrawCentered($"{GameData.Controls.Help}：説明を閉じる・対戦中は一時停止　" +
+                     $"{GameData.Controls.DebugOverlay}：情報表示　{GameData.Controls.Quit}：終了",
+            482, 1, Color.LightGray);
+    }
+
+    internal static string InstructionSectionTitle(int page) => page switch
+    {
+        0 => "基本操作",
+        1 => "納刀中の技",
+        _ => "抜刀中の技"
+    };
+
+    internal static string[] InstructionLines(int page)
+    {
+        var light = GameData.Controls.Light;
+        var medium = GameData.Controls.Medium;
+        var heavy = GameData.Controls.Heavy;
+        var guard = GameData.Controls.Guard;
+        return page switch
+        {
+            0 =>
+            [
+                $"移動：{GameData.Controls.Left} / {GameData.Controls.Right} または ← / →",
+                $"ジャンプ：{GameData.Controls.Jump} または ↑　しゃがみ：{GameData.Controls.Down} または ↓",
+                $"{light}：弱　{medium}：中　{heavy}：強　{guard}：ガード",
+                $"{guard} + ↓：特殊ガード・納刀",
+                $"同時押し：{light} + {medium}（完全回避）／{light} + {heavy}（深呼吸）",
+                "Enter：開始・再開　F1：説明画面を開閉（対戦中は一時停止）"
+            ],
+            1 =>
+            [
+                $"{light}：手刀（空振り後もキャンセル可）",
+                $"{medium}：鞘当て（{medium} → {medium} → {medium}、3段）",
+                $"{heavy}：神速抜刀・撃発（開始時に抜刀）",
+                $"{light} + {medium}：完全回避（成功時のみ攻撃へ派生）",
+                $"{light} + {heavy}：深呼吸（3秒間強化）",
+                $"手刀の後に {medium}：回転剣舞（最大6回転）",
+                $"{guard} + ↓：特殊ガード・納刀"
+            ],
+            _ =>
+            [
+                $"{light}：斬（{light}を3回追加入力、最大4段）",
+                $"{medium}：突破（入力方向へ突き）",
+                $"{heavy}：閃光剣 ― 未実装",
+                $"{light} + {medium}：滞空突破 ― 未実装",
+                $"{light} + {heavy}：滑刃走破（カウンター効果は未実装）",
+                $"斬の後に {medium}：肉骨断罪（スーパーアーマー）",
+                $"{guard} + ↓：特殊ガード・納刀"
+            ]
+        };
     }
 
     private string ResultText() => _battle.Result switch
     {
-        RoundResult.PlayerWin => "PLAYER WIN",
-        RoundResult.CpuWin => "CPU WIN",
-        _ => "DRAW"
+        RoundResult.PlayerWin => "プレイヤー勝利",
+        RoundResult.CpuWin => "CPU勝利",
+        _ => "引き分け"
     };
 
     private void DrawStage()
@@ -286,8 +326,8 @@ internal sealed class FightingGame : Game
 
     private void DrawHud()
     {
-        DrawText("P1", 42, 18, 2, PlayerColor);
-        DrawText("CPU", 840, 18, 2, CpuColor);
+        DrawText("1P", 42, 18, 1, PlayerColor);
+        DrawText("CPU", 840, 18, 1, CpuColor);
         DrawBar(42, 42, 390, 22, _battle.Player.Health, GameData.MaximumHealth, PlayerColor);
         DrawBar(528, 42, 390, 22, _battle.Cpu.Health, GameData.MaximumHealth, CpuColor, reverse: true);
         DrawBar(42, 70, 260, 8, _battle.Player.Meter, GameData.MaximumMeter, MeterColor);
@@ -295,13 +335,15 @@ internal sealed class FightingGame : Game
         DrawCentered(_battle.RemainingSeconds.ToString("00"), 24, 2, Color.White);
         if (_battle.Phase == RoundPhase.Fighting)
         {
-            DrawText("P1 HP", 42, 88, 1, Color.LightGray);
-            DrawText("CPU HP", 840, 88, 1, Color.LightGray);
-            DrawText("METER", 42, 80, 1, Color.LightGray);
-            DrawText("METER", 840, 80, 1, Color.LightGray);
-            DrawCentered($"{GameData.Controls.Help} HELP / PAUSE", 110, 1, Color.LightGray);
-            DrawText($"P1 {_battle.Player.SwordState} / {_battle.Player.LastMoveResult}", 42, 470, 1, PlayerColor);
-            DrawText($"CPU {_battle.Cpu.SwordState} / {_battle.Cpu.LastMoveResult}", 495, 470, 1, CpuColor);
+            DrawText("気力", 42, 80, 1, Color.LightGray);
+            DrawText("気力", 840, 80, 1, Color.LightGray);
+            DrawText("体力", 42, 94, 1, Color.LightGray);
+            DrawText("体力", 840, 94, 1, Color.LightGray);
+            DrawCentered($"{GameData.Controls.Help}：操作説明・一時停止", 110, 1, Color.LightGray);
+            DrawText($"{_battle.Player.Name} 刀：{SwordStateText(_battle.Player)}／{ActionText(_battle.Player.Action)}",
+                42, 470, 1, PlayerColor);
+            DrawText($"{_battle.Cpu.Name} 刀：{SwordStateText(_battle.Cpu)}／{ActionText(_battle.Cpu.Action)}",
+                495, 470, 1, CpuColor);
         }
     }
 
@@ -453,14 +495,42 @@ internal sealed class FightingGame : Game
     private void DrawFighterDebug(Fighter fighter, int y, Color color)
     {
         MoveRegistry.Default.TryGet(fighter.CurrentMove, out var registration);
-        DrawText($"{fighter.Name} {fighter.SwordState} / {fighter.Action} / " +
-                 $"{registration?.DisplayName ?? "NONE"} / ID {fighter.CurrentMove}", 30, y, 1, color);
-        DrawText($"KEY {registration?.Key ?? "-"} / STAGE {fighter.Execution?.Stage ?? 0} / " +
-                 $"ORIGIN {fighter.Execution?.OriginId ?? 0} / FRAME {fighter.MoveFrame}", 30, y + 13, 1, color);
-        DrawText($"REQUEST {fighter.LastMoveResult} ID {fighter.LastRequestedMoveId} / BUFF {fighter.BreathFramesRemaining} / " +
-                 $"EVADE SUCCESS {fighter.Execution?.EvadeSucceeded == true} / TIP CONTACT {fighter.CounterTipContact}",
-            30, y + 26, 1, color);
+        DrawText($"{fighter.Name} 刀：{SwordStateText(fighter)}／状態：{ActionText(fighter.Action)}／" +
+                 $"技：{registration?.Name ?? "なし"}／ID {fighter.CurrentMove}", 30, y, 1, color);
+        DrawText($"キー {registration?.Key ?? "-"}／段階 {fighter.Execution?.Stage ?? 0}／" +
+                 $"起点ID {fighter.Execution?.OriginId ?? 0}／フレーム {fighter.MoveFrame}", 30, y + 16, 1, color);
+        DrawText($"要求 {MoveResultText(fighter.LastMoveResult)} ID {fighter.LastRequestedMoveId}／" +
+                 $"強化 {fighter.BreathFramesRemaining}／回避成功 {fighter.Execution?.EvadeSucceeded == true}／" +
+                 $"先端接触 {fighter.CounterTipContact}",
+            30, y + 32, 1, color);
     }
+
+    private static string SwordStateText(Fighter fighter) =>
+        fighter.SwordState == SwordState.Sheathed ? "納刀" : "抜刀";
+
+    private static string ActionText(FighterAction action) => action switch
+    {
+        FighterAction.Walking => "移動",
+        FighterAction.Crouching => "しゃがみ",
+        FighterAction.Attack => "攻撃",
+        FighterAction.Hitstun => "被弾硬直",
+        FighterAction.Guardstun => "ガード硬直",
+        FighterAction.Knockout => "KO",
+        _ => "待機"
+    };
+
+    private static string MoveResultText(MoveRequestResult result) => result switch
+    {
+        MoveRequestResult.Started => "開始",
+        MoveRequestResult.Continued => "継続",
+        MoveRequestResult.Busy => "行動中",
+        MoveRequestResult.WrongState => "刀状態不一致",
+        MoveRequestResult.BranchOnly => "派生専用",
+        MoveRequestResult.Unimplemented => "未実装",
+        MoveRequestResult.UnknownId => "技ID不明",
+        MoveRequestResult.UndefinedCommand => "未定義コマンド",
+        _ => "なし"
+    };
 
     private void DrawRect(Rectangle rectangle, Color color)
     {
@@ -483,16 +553,22 @@ internal sealed class FightingGame : Game
 
     private void DrawCenteredAt(string text, int centerX, int y, int scale, Color color)
     {
-        var width = Math.Max(0, text.Length * 6 * scale - scale);
+        var width = Math.Max(0, JapaneseFont.MeasureTextWidth(text, scale) - scale);
         DrawText(text, centerX - width / 2, y, scale, color);
     }
 
     private void DrawText(string text, int x, int y, int scale, Color color)
     {
         var cursor = x;
-        foreach (var character in text.ToUpperInvariant())
+        foreach (var character in text)
         {
-            if (Glyphs.TryGetValue(character, out var rows))
+            if (_japaneseGlyphs.TryGetValue(character, out var source))
+            {
+                _spriteBatch.Draw(_japaneseGlyphAtlas, new Rectangle(cursor, y,
+                    JapaneseFont.CellSize * scale, JapaneseFont.CellSize * scale), source, color);
+                cursor += JapaneseFont.CellSize * scale;
+            }
+            else if (Glyphs.TryGetValue(char.ToUpperInvariant(character), out var rows))
             {
                 for (var row = 0; row < rows.Length; row++)
                 {
@@ -500,13 +576,28 @@ internal sealed class FightingGame : Game
                     {
                         if (rows[row][column] == '1')
                         {
-                            DrawRect(new Rectangle(cursor + column * scale, y + row * scale, scale, scale), color);
+                            var pixelScale = scale * 2;
+                            DrawRect(new Rectangle(cursor + column * pixelScale,
+                                y + row * pixelScale, pixelScale, pixelScale), color);
                         }
                     }
                 }
-            }
 
-            cursor += 6 * scale;
+                cursor += 12 * scale;
+            }
+            else
+            {
+                if (!char.IsAscii(character))
+                {
+                    DrawOutline(new Rectangle(cursor, y,
+                        JapaneseFont.CellSize * scale, JapaneseFont.CellSize * scale), Color.Magenta);
+                    cursor += JapaneseFont.CellSize * scale;
+                }
+                else
+                {
+                    cursor += 12 * scale;
+                }
+            }
         }
     }
 
@@ -558,6 +649,7 @@ internal sealed class FightingGame : Game
         ['-'] = ["000", "000", "000", "11111", "000", "000", "000"],
         ['/'] = ["00001", "00010", "00010", "00100", "01000", "01000", "10000"],
         ['!'] = ["010", "010", "010", "010", "010", "000", "010"],
-        ['+'] = ["00000", "00100", "00100", "11111", "00100", "00100", "00000"]
+        ['+'] = ["00000", "00100", "00100", "11111", "00100", "00100", "00000"],
+        ['_'] = ["00000", "00000", "00000", "00000", "00000", "00000", "11111"]
     };
 }
